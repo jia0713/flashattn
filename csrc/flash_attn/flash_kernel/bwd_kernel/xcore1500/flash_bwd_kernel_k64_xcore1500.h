@@ -12,6 +12,8 @@
 #include <mctlass/numeric_types.h>
 #include <mctlass/numeric_conversion.h>
 
+#include <type_traits>
+
 #include "block_info.h"
 #include "kernel_traits.h"
 #include "utils.h"
@@ -397,8 +399,8 @@ __forceinline__ __device__ void compute_dq_dk_dv_1colblock_k64_xcore1500(const P
     constexpr int atomic_add_cnt = size(tdQgdQaccum);
     uint32_t ping_pong = 0;
     flash::cp_async_wait<0>();
-    // Main loop
-    for (; m_block >= m_block_min; --m_block) {
+
+    auto process_m_block = [&](auto Need_mask) {
         clear(acc_s);
         const int sQ_offset = ping_pong == 0 ? size(sQ) : -size(sQ);
         const int sdO_offset = ping_pong == 0 ? size(sdO) : -size(sdO);
@@ -472,25 +474,18 @@ __forceinline__ __device__ void compute_dq_dk_dv_1colblock_k64_xcore1500(const P
                               m_block * kBlockM + get<0>(taccScS_row(0)), AtomLayoutMS * 16, AtomLayoutNS * 16);
         }
 
-        if constexpr (!Is_causal && !Is_local) {
-            if (!Is_even_MN && (n_block + 1) * kBlockN >= binfo.actual_seqlen_k) {
+        if constexpr (decltype(Need_mask)::value) {
+            if constexpr (!Is_causal && !Is_local) {
                 flash::apply_mask(scores, binfo.actual_seqlen_k,
                                   n_block * kBlockN + (tidx / 64 / AtomLayoutMS) * 16, AtomLayoutNS * 16);
-            }
-        } else if constexpr (Is_causal) {
-            if (m_block * kBlockM < (n_block + 1) * kBlockN + binfo.actual_seqlen_q - binfo.actual_seqlen_k
-                || (!Is_even_MN && (n_block + 1) * kBlockN >= binfo.actual_seqlen_k)) {
+            } else if constexpr (Is_causal) {
                 flash::apply_mask_causal(scores, n_block * kBlockN + (tidx / 64 / AtomLayoutMS) * 16,
                                          binfo.actual_seqlen_k, m_block * kBlockM + get<0>(taccScS_row(0)),
                                          binfo.actual_seqlen_q,
                                          // binfo.actual_seqlen_k, m_block * kBlockM + (tidx / 32) % AtomLayoutMS * 16 + (tidx % 32) / 4,
                                          AtomLayoutMS * 16,
                                          AtomLayoutNS * 16);
-            }
-        } else if constexpr (Is_local) {
-            if (m_block * kBlockM < (n_block + 1) * kBlockN + binfo.actual_seqlen_q - binfo.actual_seqlen_k - params.window_size_right
-                || (m_block + 1) * kBlockM >= n_block * kBlockN + binfo.actual_seqlen_q - binfo.actual_seqlen_k + params.window_size_left
-                || (!Is_even_MN && (n_block + 1) * kBlockN >= binfo.actual_seqlen_k)) {
+            } else if constexpr (Is_local) {
                 flash::apply_mask_local(scores, n_block * kBlockN + (tidx / 64 / AtomLayoutMS) * 16,
                                         binfo.actual_seqlen_k, m_block * kBlockM + get<0>(taccScS_row(0)),
                                         binfo.actual_seqlen_q, AtomLayoutMS * 16,
@@ -607,6 +602,41 @@ __forceinline__ __device__ void compute_dq_dk_dv_1colblock_k64_xcore1500(const P
         #pragma unroll
         for (int i = 0; i < size(acc_dq); ++i) { atomicAdd(&tdQgdQaccum(i), acc_dq(i)); }
 
+    };
+
+    const bool masking_col_block = !Is_even_MN && (n_block + 1) * kBlockN >= binfo.actual_seqlen_k;
+    if (masking_col_block) {
+        for (; m_block >= m_block_min; --m_block) {
+            process_m_block(std::true_type{});
+        }
+    } else if constexpr (!Is_causal && !Is_local) {
+        for (; m_block >= m_block_min; --m_block) {
+            process_m_block(std::false_type{});
+        }
+    } else if constexpr (Is_causal) {
+        const int causal_mask_boundary = (n_block + 1) * kBlockN + binfo.actual_seqlen_q - binfo.actual_seqlen_k;
+        const int masking_m_block_max = causal_mask_boundary <= 0 ? -1 : cute::ceil_div(causal_mask_boundary, kBlockM) - 1;
+        for (; m_block > masking_m_block_max && m_block >= m_block_min; --m_block) {
+            process_m_block(std::false_type{});
+        }
+        for (; m_block >= m_block_min; --m_block) {
+            process_m_block(std::true_type{});
+        }
+    } else if constexpr (Is_local) {
+        const int local_mask_low_boundary = (n_block + 1) * kBlockN + binfo.actual_seqlen_q - binfo.actual_seqlen_k - params.window_size_right;
+        const int local_mask_high_boundary = n_block * kBlockN + binfo.actual_seqlen_q - binfo.actual_seqlen_k + params.window_size_left;
+        const int no_mask_m_block_min = local_mask_low_boundary <= 0 ? 0 : cute::ceil_div(local_mask_low_boundary, kBlockM);
+        const int no_mask_m_block_max = local_mask_high_boundary <= 0 ? -1 : cute::ceil_div(local_mask_high_boundary, kBlockM) - 2;
+
+        for (; m_block > no_mask_m_block_max && m_block >= m_block_min; --m_block) {
+            process_m_block(std::true_type{});
+        }
+        for (; m_block >= no_mask_m_block_min && m_block >= m_block_min; --m_block) {
+            process_m_block(std::false_type{});
+        }
+        for (; m_block >= m_block_min; --m_block) {
+            process_m_block(std::true_type{});
+        }
     }
 
     // Epilogue
