@@ -18,6 +18,11 @@ namespace flash {
 
 using namespace cute;
 
+template<bool B>
+struct BwdHdim128BoolConstant {
+    static constexpr bool value = B;
+};
+
 // load 4x4 from smem
 template <typename Engine0, typename Layout0>
 __forceinline__ __device__ auto make_custom_sm_tensor_load_sm4x4(Tensor<Engine0, Layout0> const &smem_base) {
@@ -495,7 +500,8 @@ __forceinline__ __device__ void compute_dq_dk_dv_1colblock_hdim128_32x128(const 
     flash::cp_async_wait<0>();
     constexpr int atomic_add_cnt = size(tdQgdQaccum);
 
-    for (; m_block >= m_block_min; --m_block) {
+    auto run_one_m_block = [&](auto apply_bounds_mask_tag) {
+        constexpr bool Apply_bounds_mask = decltype(apply_bounds_mask_tag)::value;
         Tensor acc_s = partition_fragment_C(tiled_mma_sdp, Shape<Int<kBlockM>, Int<kBlockN>>{});  // (MMA=4, MMA_N, MMA_N)
         clear(acc_s);
         // arrive all ldg in pre loop and not arrive atomic add here
@@ -570,33 +576,34 @@ __forceinline__ __device__ void compute_dq_dk_dv_1colblock_hdim128_32x128(const 
                               m_block * kBlockM + get<0>(taccScS_row(0)), AtomLayoutMS * 16, AtomLayoutNS * 16);
         }
 
-        if (!Is_causal && !Is_local) {
-            if (!Is_even_MN && (n_block + 1) * kBlockN >= binfo.actual_seqlen_k) {
-                flash::apply_mask(scores, binfo.actual_seqlen_k,
-                                  n_block * kBlockN + (tidx / 64 / AtomLayoutMS) * 16,
-                                  AtomLayoutNS * 16);
+        if constexpr (Apply_bounds_mask) {
+            if constexpr (!Is_causal && !Is_local) {
+                if (!Is_even_MN && (n_block + 1) * kBlockN >= binfo.actual_seqlen_k) {
+                    flash::apply_mask(scores, binfo.actual_seqlen_k,
+                                      n_block * kBlockN + (tidx / 64 / AtomLayoutMS) * 16,
+                                      AtomLayoutNS * 16);
+                }
+            } else if constexpr (Is_causal) {
+                if (m_block * kBlockM < (n_block + 1) * kBlockN + binfo.actual_seqlen_q - binfo.actual_seqlen_k
+                    || (!Is_even_MN && (n_block + 1) * kBlockN >= binfo.actual_seqlen_k)) {
+                    flash::apply_mask_causal(scores, n_block * kBlockN + (tidx / 64 / AtomLayoutMS) * 16,
+                                             binfo.actual_seqlen_k, m_block * kBlockM + get<0>(taccScS_row(0)),
+                                             binfo.actual_seqlen_q,
+                                             // binfo.actual_seqlen_k, m_block * kBlockM + (tidx / 32) % AtomLayoutMS * 16 + (tidx % 32) / 4,
+                                             AtomLayoutMS * 16,
+                                             AtomLayoutNS * 16);
+                }
+            } else if constexpr (Is_local) {
+                if (m_block * kBlockM < (n_block + 1) * kBlockN + binfo.actual_seqlen_q - binfo.actual_seqlen_k - params.window_size_right
+                    || (m_block + 1) * kBlockM >= n_block * kBlockN + binfo.actual_seqlen_q - binfo.actual_seqlen_k + params.window_size_left
+                    || (!Is_even_MN && (n_block + 1) * kBlockN >= binfo.actual_seqlen_k)) {
+                    flash::apply_mask_local(scores, n_block * kBlockN + (tidx / 64 / AtomLayoutMS) * 16,
+                                            binfo.actual_seqlen_k, m_block * kBlockM + get<0>(taccScS_row(0)),
+                                            binfo.actual_seqlen_q, AtomLayoutMS * 16,
+                                            params.window_size_left, params.window_size_right,
+                                            AtomLayoutNS * 16);
+                }
             }
-        } else if (Is_causal) {
-            if (m_block * kBlockM < (n_block + 1) * kBlockN + binfo.actual_seqlen_q - binfo.actual_seqlen_k
-                || (!Is_even_MN && (n_block + 1) * kBlockN >= binfo.actual_seqlen_k)) {
-                flash::apply_mask_causal(scores, n_block * kBlockN + (tidx / 64 / AtomLayoutMS) * 16,
-                                         binfo.actual_seqlen_k, m_block * kBlockM + get<0>(taccScS_row(0)),
-                                         binfo.actual_seqlen_q,
-                                         // binfo.actual_seqlen_k, m_block * kBlockM + (tidx / 32) % AtomLayoutMS * 16 + (tidx % 32) / 4,
-                                         AtomLayoutMS * 16,
-                                         AtomLayoutNS * 16);
-            }
-        } else if (Is_local) {
-            if (m_block * kBlockM < (n_block + 1) * kBlockN + binfo.actual_seqlen_q - binfo.actual_seqlen_k - params.window_size_right
-                || (m_block + 1) * kBlockM >= n_block * kBlockN + binfo.actual_seqlen_q - binfo.actual_seqlen_k + params.window_size_left
-                || (!Is_even_MN && (n_block + 1) * kBlockN >= binfo.actual_seqlen_k)) {
-                flash::apply_mask_local(scores, n_block * kBlockN + (tidx / 64 / AtomLayoutMS) * 16,
-                                        binfo.actual_seqlen_k, m_block * kBlockM + get<0>(taccScS_row(0)),
-                                        binfo.actual_seqlen_q, AtomLayoutMS * 16,
-                                        params.window_size_left, params.window_size_right,
-                                        AtomLayoutNS * 16);
-            }
-
         }
 
         SWIZZLE_STORE_QDO(tdOsdOt, tdOrdO, tdOsdO)
@@ -696,6 +703,33 @@ __forceinline__ __device__ void compute_dq_dk_dv_1colblock_hdim128_32x128(const 
         flash::gemm(acc_dk, tdKrdSt, tdKrQt, tiled_mma_dkv);
 
         tdKsQt.data() = tdKsQt.data() + (m_block % 2 == 0 ? size(sQt) : -size(sQt));  // Double buffer for sQt
+    };
+
+    int m_block_mask_start = m_block_min;
+    if constexpr (Is_causal && !Is_local) {
+        if (Is_even_MN || (n_block + 1) * kBlockN < binfo.actual_seqlen_k) {
+            const int first_masked_row = (n_block + 1) * kBlockN + binfo.actual_seqlen_q - binfo.actual_seqlen_k;
+            m_block_mask_start = cute::ceil_div(first_masked_row, kBlockM);
+            m_block_mask_start = std::max(m_block_min, m_block_mask_start);
+        } else {
+            // The last partial N block needs sequence-length masking for every M block.
+            m_block_mask_start = m_block + 1;
+        }
+    } else if constexpr (!Is_causal && !Is_local) {
+        m_block_mask_start = (!Is_even_MN && (n_block + 1) * kBlockN >= binfo.actual_seqlen_k) ? m_block + 1 : m_block_min;
+    } else {
+        // Keep local attention conservative: every relevant block may need window masking.
+        m_block_mask_start = m_block + 1;
+    }
+
+    // Main loop: these M blocks provably do not need causal/local/sequence-length masking.
+    for (; m_block >= m_block_mask_start; --m_block) {
+        run_one_m_block(BwdHdim128BoolConstant<false>{});
+    }
+
+    // Mask loop: handle causal/local boundary blocks and partial sequence tiles.
+    for (; m_block >= m_block_min; --m_block) {
+        run_one_m_block(BwdHdim128BoolConstant<true>{});
     }
 
     // Epilogue
