@@ -6,6 +6,11 @@ import os
 import torch
 import torch.nn as nn
 
+from flash_attn.ops.triton.unified_attention import (
+    can_use_triton_unified_attention,
+    triton_unified_attention_with_kvcache,
+)
+
 # isort: off
 # We need to import the CUDA kernels after importing torch
 import flash_attn_2_cuda as flash_attn_cuda
@@ -1663,6 +1668,32 @@ def flash_attn_with_kvcache(
                 softcap = softcap
             )
             writer.write("flash_attn_with_kvcache", q.dtype == torch.bfloat16, problem)
+    if can_use_triton_unified_attention(
+        q,
+        k_cache,
+        v_cache,
+        k,
+        v,
+        rotary_cos,
+        rotary_sin,
+        cache_seqlens,
+        cache_batch_idx,
+        cache_leftpad,
+        block_table,
+        alibi_slopes,
+        causal,
+        window_size,
+        softcap,
+        s_aux,
+    ):
+        return triton_unified_attention_with_kvcache(
+            q,
+            k_cache,
+            v_cache,
+            cache_seqlens,
+            block_table,
+            softmax_scale,
+        )
     out, softmax_lse = flash_attn_cuda.fwd_kvcache(
         q,
         k_cache,
