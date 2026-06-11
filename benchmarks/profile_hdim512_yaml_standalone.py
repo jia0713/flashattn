@@ -1191,6 +1191,69 @@ def dtype_from_case(case, override):
     return torch.bfloat16, "bf16"
 
 
+def _int_list(values):
+    return [int(x) for x in values]
+
+
+def _prefix_sum(lengths):
+    out = [0]
+    for length in lengths:
+        out.append(out[-1] + int(length))
+    return out
+
+
+def normalize_case(case):
+    case = dict(case)
+    if "seqlens_q" not in case and "max_seqlen_q" in case and "batch_size" in case:
+        case["seqlens_q"] = [int(case["max_seqlen_q"])] * int(case["batch_size"])
+    if "seqlens_kv" not in case:
+        if "seqlens_k" in case:
+            case["seqlens_kv"] = case["seqlens_k"]
+        elif "max_seqlen_kv" in case and "batch_size" in case:
+            case["seqlens_kv"] = [int(case["max_seqlen_kv"])] * int(case["batch_size"])
+    if "cu_seqlens_q" not in case and "seqlens_q" in case:
+        case["cu_seqlens_q"] = _prefix_sum(case["seqlens_q"])
+    if "cu_seqlens_kv" not in case and "seqlens_kv" in case:
+        case["cu_seqlens_kv"] = _prefix_sum(case["seqlens_kv"])
+    if "max_seqlen_q" not in case and "seqlens_q" in case:
+        case["max_seqlen_q"] = max(_int_list(case["seqlens_q"]))
+    if "max_seqlen_kv" not in case and "seqlens_kv" in case:
+        case["max_seqlen_kv"] = max(_int_list(case["seqlens_kv"]))
+    if "batch_size" not in case and "cu_seqlens_q" in case:
+        case["batch_size"] = len(case["cu_seqlens_q"]) - 1
+    return case
+
+
+def paged_case_status(case):
+    required = [
+        "batch_size",
+        "cu_seqlens_q",
+        "cu_seqlens_kv",
+        "seqlens_q",
+        "seqlens_kv",
+        "num_heads_q",
+        "num_heads_kv",
+        "head_dim",
+        "paged_block_size",
+    ]
+    missing = [key for key in required if key not in case]
+    if missing:
+        return False, f"missing required paged attention fields: {','.join(missing)}"
+    paged = bool(case.get("paged_kv", True)) or "paged_block_size" in case
+    if not paged:
+        return False, "non-paged attention is not supported by this profiler"
+    if not bool(case.get("causal", True)):
+        return False, "Triton unified profiler only supports causal attention"
+    bsz = int(case["batch_size"])
+    if len(case["cu_seqlens_q"]) != bsz + 1:
+        return False, "len(cu_seqlens_q) must be batch_size + 1"
+    if len(case["cu_seqlens_kv"]) != bsz + 1:
+        return False, "len(cu_seqlens_kv) must be batch_size + 1"
+    if int(case["num_heads_q"]) % int(case["num_heads_kv"]) != 0:
+        return False, "num_heads_q must be divisible by num_heads_kv"
+    return True, "ok"
+
+
 def make_varlen_paged_case(case, dtype, device):
     torch.manual_seed(int(case.get("hash_code", 0)) & 0x7FFFFFFF)
     hq = int(case["num_heads_q"])
@@ -1457,14 +1520,16 @@ def main():
         writer = csv.DictWriter(f, fieldnames=fields)
         writer.writeheader()
         for name, case in cases.items():
+            case = normalize_case(case)
             dtype, dtype_name = dtype_from_case(case, args.dtype)
-            if case.get("api") != "_flash_attn_varlen_forward" or not case.get("paged_kv", False):
+            supported, reason = paged_case_status(case)
+            if not supported:
                 row = {
                     "case": name,
                     "backend": "unsupported",
                     "dtype": dtype_name,
                     "api": case.get("api"),
-                    "status": "only _flash_attn_varlen_forward with paged_kv is supported",
+                    "status": reason,
                 }
                 writer.writerow(row)
                 print(row)

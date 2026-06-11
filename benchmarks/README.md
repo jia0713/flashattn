@@ -1,6 +1,6 @@
 # Head-Dim YAML Profiling
 
-`profile_hdim512_yaml_standalone.py` profiles YAML-captured paged varlen
+`profile_hdim512_yaml_standalone.py` profiles YAML-captured paged causal
 attention cases without depending on the local flash-attn or vLLM source tree.
 
 Runtime dependencies:
@@ -15,7 +15,9 @@ not import this repository's flash-attn source code.
 
 ## Supported Cases
 
-The expected YAML format is a mapping of problem names to problem fields:
+The expected YAML format is a mapping of problem names to problem fields. The
+`api` field is recorded in the CSV but is not used to decide Triton support;
+support is based on the paged attention shape fields.
 
 ```yaml
 problem_1:
@@ -37,6 +39,24 @@ problem_1:
 
 Multiple top-level problems are supported. Each problem is emitted as one row
 per backend in the output CSV.
+
+The required fields for Triton unified profiling are:
+
+```text
+batch_size
+seqlens_q
+seqlens_kv
+num_heads_q
+num_heads_kv
+head_dim
+paged_block_size
+```
+
+`cu_seqlens_q` and `cu_seqlens_kv` are preferred. If they are absent, the script
+derives them from `seqlens_q` and `seqlens_kv`.
+
+`paged_kv: true` is preferred. If `paged_kv` is absent but `paged_block_size` is
+present, the case is treated as paged.
 
 The standalone profiler supports both `head_dim=256` and `head_dim=512`, as
 long as the selected backend supports that shape. The current
