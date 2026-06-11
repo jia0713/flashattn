@@ -58,6 +58,10 @@ derives them from `seqlens_q` and `seqlens_kv`.
 `paged_kv: true` is preferred. If `paged_kv` is absent but `paged_block_size` is
 present, the case is treated as paged.
 
+For `api: flash_attn_with_kvcache` decode cases, the script treats
+`max_seqlen_q` and `max_seqlen_kv` as the per-sequence query and KV lengths
+when the YAML does not provide per-batch `cu_seqlens_*`.
+
 The standalone profiler supports both `head_dim=256` and `head_dim=512`, as
 long as the selected backend supports that shape. The current
 `flash_attn_with_kvcache` automatic Triton-unified route in the library is still

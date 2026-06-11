@@ -38,3 +38,40 @@ problem_1:
   total_seqlens_q: 2044
   window_left: -1
   window_right: -1
+problem_150:
+  alibi: false
+  api: flash_attn_with_kvcache
+  append_kv: false
+  attn_mask: false
+  batch_size: 4
+  batch_size_c: 4
+  causal: true
+  count: 990
+  deterministic: false
+  dropout: false
+  hash_code: 9247274671061182226
+  head_dim: 512
+  head_dim_v: 512
+  is_fp16: false
+  kvpacked: false
+  max_seqlen_kv: 8192
+  max_seqlen_q: 1
+  num_heads_kv: 1
+  num_heads_q: 8
+  paged_block_size: 32
+  paged_kv: true
+  paged_num_blocks: 92659
+  qkvpacked: false
+  rope: false
+  seqlens_kv:
+  - 0
+  seqlens_q:
+  - 1
+  - 1
+  - 1
+  - 1
+  softcap: 0.0
+  total_seqlens_kv: 0
+  total_seqlens_q: 0
+  window_left: -1
+  window_right: -1

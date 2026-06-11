@@ -1204,6 +1204,16 @@ def _prefix_sum(lengths):
 
 def normalize_case(case):
     case = dict(case)
+    api = str(case.get("api", ""))
+    is_kvcache = api == "flash_attn_with_kvcache"
+    bsz = int(case["batch_size"]) if "batch_size" in case else None
+
+    if is_kvcache and bsz is not None:
+        if "max_seqlen_q" in case:
+            case["seqlens_q"] = [int(case["max_seqlen_q"])] * bsz
+        if "max_seqlen_kv" in case:
+            case["seqlens_kv"] = [int(case["max_seqlen_kv"])] * bsz
+
     if "seqlens_q" not in case and "max_seqlen_q" in case and "batch_size" in case:
         case["seqlens_q"] = [int(case["max_seqlen_q"])] * int(case["batch_size"])
     if "seqlens_kv" not in case:
@@ -1211,6 +1221,13 @@ def normalize_case(case):
             case["seqlens_kv"] = case["seqlens_k"]
         elif "max_seqlen_kv" in case and "batch_size" in case:
             case["seqlens_kv"] = [int(case["max_seqlen_kv"])] * int(case["batch_size"])
+    if "batch_size" in case and "seqlens_q" in case and len(case["seqlens_q"]) == 1:
+        case["seqlens_q"] = [int(case["seqlens_q"][0])] * int(case["batch_size"])
+    if "batch_size" in case and "seqlens_kv" in case and len(case["seqlens_kv"]) == 1:
+        if int(case["seqlens_kv"][0]) == 0 and "max_seqlen_kv" in case:
+            case["seqlens_kv"] = [int(case["max_seqlen_kv"])] * int(case["batch_size"])
+        else:
+            case["seqlens_kv"] = [int(case["seqlens_kv"][0])] * int(case["batch_size"])
     if "cu_seqlens_q" not in case and "seqlens_q" in case:
         case["cu_seqlens_q"] = _prefix_sum(case["seqlens_q"])
     if "cu_seqlens_kv" not in case and "seqlens_kv" in case:
@@ -1221,6 +1238,10 @@ def normalize_case(case):
         case["max_seqlen_kv"] = max(_int_list(case["seqlens_kv"]))
     if "batch_size" not in case and "cu_seqlens_q" in case:
         case["batch_size"] = len(case["cu_seqlens_q"]) - 1
+    if "seqlens_q" in case and int(case.get("total_seqlens_q", 0)) <= 0:
+        case["total_seqlens_q"] = sum(_int_list(case["seqlens_q"]))
+    if "seqlens_kv" in case and int(case.get("total_seqlens_kv", 0)) <= 0:
+        case["total_seqlens_kv"] = sum(_int_list(case["seqlens_kv"]))
     return case
 
 
