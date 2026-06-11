@@ -1373,6 +1373,25 @@ def run_triton_unified_varlen(
 
 
 def run_flash_varlen(q, k, v, cu_q, cu_k, max_q, max_k, block_table, case):
+    if str(case.get("api", "")) == "flash_attn_with_kvcache":
+        from flash_attn.flash_attn_interface import flash_attn_with_kvcache
+
+        batch_size = int(case["batch_size"])
+        q_batched = q.reshape(batch_size, max_q, q.shape[1], q.shape[2])
+        cache_seqlens = cu_k[1:] - cu_k[:-1]
+        out = flash_attn_with_kvcache(
+            q_batched,
+            k,
+            v,
+            cache_seqlens=cache_seqlens,
+            block_table=block_table,
+            causal=bool(case.get("causal", False)),
+            window_size=(int(case.get("window_left", -1)), int(case.get("window_right", -1))),
+            num_splits=1,
+            softcap=float(case.get("softcap", 0.0)),
+        )
+        return out.reshape(q.shape)
+
     from flash_attn.flash_attn_interface import flash_attn_varlen_func
 
     return flash_attn_varlen_func(
@@ -1615,7 +1634,12 @@ def main():
 
             backends = []
             if "flash" in requested_backends and args.flash_backend != "off" and flash_available:
-                backends.append(("flash_attn_varlen", run_flash_varlen))
+                flash_backend_name = (
+                    "flash_attn_kvcache"
+                    if str(case.get("api", "")) == "flash_attn_with_kvcache"
+                    else "flash_attn_varlen"
+                )
+                backends.append((flash_backend_name, run_flash_varlen))
             elif "flash" in requested_backends and args.flash_backend != "off":
                 row = {
                     **common,
