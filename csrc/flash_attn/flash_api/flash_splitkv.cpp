@@ -27,22 +27,28 @@ using namespace mcFlashAttn;
 int num_splits_heuristic(int batch_nheads_mblocks, int num_SMs, int num_n_blocks, int max_splits) {
     // If we have enough to almost fill the SMs, then just use 1 split
     if (batch_nheads_mblocks >= 0.8f * num_SMs) { return 1; }
-    max_splits = std::min({max_splits, num_SMs, num_n_blocks});
+    // 改动3: 保证每个 split 主循环至少 8 次, num_n_blocks < 8 时根本不 split
+    if (num_n_blocks < 8) { return 1; }
+    max_splits = std::min({max_splits, num_SMs, num_n_blocks / 8});
     // if (max_splits < 64 || batch_nheads_mblocks / 64 > 10) {
     //     return 1;
     // }
-    float max_efficiency = 0.f;
+    // 改动1: 预计算 no-split 效率作为 max_efficiency 初始值, 避免选到比不 split 更差的方案
+    // 改动2: xcore1000 上 max_splits <= 13 (由调用点传入)
+    auto ceildiv = [](int a, int b) { return (a + b - 1) / b; };
+    auto is_split_eligible = [&ceildiv, &num_n_blocks](int num_splits) {
+        return num_splits == 1 || ceildiv(num_n_blocks, num_splits) != ceildiv(num_n_blocks, num_splits - 1);
+    };
+    float n_waves_nosplit = float(batch_nheads_mblocks) / num_SMs;
+    float max_efficiency = n_waves_nosplit / ceil(n_waves_nosplit);
     std::vector<float> efficiency;
     efficiency.reserve(max_splits);
-    auto ceildiv = [](int a, int b) { return (a + b - 1) / b; };
+    efficiency.push_back(max_efficiency); // index 0 = num_splits=1 基线
     // Some splits are not eligible. For example, if we have 64 blocks and choose 11 splits,
     // we'll have 6 * 10 + 4 blocks. If we choose 12 splits, we'll have 6 * 11 + (-2) blocks
     // (i.e. it's 11 splits anyway).
     // So we check if the number of blocks per split is the same as the previous num_splits.
-    auto is_split_eligible = [&ceildiv, &num_n_blocks](int num_splits) {
-        return num_splits == 1 || ceildiv(num_n_blocks, num_splits) != ceildiv(num_n_blocks, num_splits - 1);
-    };
-    for (int num_splits = 1; num_splits <= max_splits; num_splits++) {
+    for (int num_splits = 2; num_splits <= max_splits; num_splits++) {
         if (!is_split_eligible(num_splits)) {
             efficiency.push_back(0.f);
         } else {
@@ -53,9 +59,9 @@ int num_splits_heuristic(int batch_nheads_mblocks, int num_SMs, int num_n_blocks
             efficiency.push_back(eff);
         }
     }
-    for (int num_splits = 1; num_splits <= max_splits; num_splits++) {
+    for (int num_splits = 2; num_splits <= max_splits; num_splits++) {
         if (!is_split_eligible(num_splits)) { continue; }
-        if (efficiency[num_splits - 1] >= 0.85 * max_efficiency) {
+        if (efficiency[num_splits - 1] >= 0.85f * max_efficiency) {
             // printf("num_splits chosen = %d\n", num_splits);
             return num_splits;
         }
@@ -157,8 +163,10 @@ void compute_params_numsplits(mcFlashAttn::Flash_fwd_params &params, const int n
                     block_nums_per_AP = 4;
                 }
             }
+            // 改动2: xcore1000 (dprops.major == 10) max_splits 限制为 13, 其它架构保持 128
+            const int max_splits_kv = (dprops.major == 10) ? 13 : 128;
             params.num_splits = num_splits_heuristic(batch_size * num_heads * num_m_blocks,  AP_nums * block_nums_per_AP,
-                                                     num_n_blocks, 128);
+                                                     num_n_blocks, max_splits_kv);
         }
     }
 
@@ -177,7 +185,9 @@ void update_params_numsplits(mcFlashAttn::Flash_fwd_params &params, const int bl
     const int num_m_blocks = (max_seqlen_q + block_m - 1) / block_m;
 
     if (p_dropout == 0.0f) {  // SplitKV is not implemented for dropout
+        // 改动2: xcore1000 (dprops.major == 10) max_splits 限制为 13, 其它架构保持 128
+        const int max_splits_kv = (dprops.major == 10) ? 13 : 128;
         params.num_splits = num_splits_heuristic(batch_size * num_heads * num_m_blocks,  AP_nums * block_nums_per_AP,
-                                                    num_n_blocks, 128);
+                                                    num_n_blocks, max_splits_kv);
     }
 }
