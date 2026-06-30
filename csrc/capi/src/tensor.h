@@ -47,10 +47,11 @@ struct InternalTensor{
 
         auto count = sizes.size();
         strides.resize(count);
+        if (count == 0) { return; }
         strides[count - 1] = 1;
 
         for(int i = count - 2; i >= 0; --i){
-            int stride = sizes[i + 1] * strides[i + 1];
+            int64_t stride = sizes[i + 1] * strides[i + 1];
             strides[i] = stride;
         }
     }
@@ -75,16 +76,18 @@ struct InternalTensor{
         std::cout << "type:" << dtype_str << std::endl;
 
         std::cout << "size:[";
-        for(int i = 0; i < sizes.size() - 1; ++ i) {
-            std::cout << sizes[i] << ",";
+        for(size_t i = 0; i < sizes.size(); ++ i) {
+            if (i > 0) { std::cout << ","; }
+            std::cout << sizes[i];
         }
-        std::cout << sizes[sizes.size() - 1] << "]" << std::endl;
+        std::cout << "]" << std::endl;
 
         std::cout << "stride:[";
-        for(int i = 0; i < strides.size() - 1; ++ i) {
-            std::cout << strides[i] << ",";
+        for(size_t i = 0; i < strides.size(); ++ i) {
+            if (i > 0) { std::cout << ","; }
+            std::cout << strides[i];
         }
-        std::cout << strides[strides.size() - 1] << "]" << std::endl;
+        std::cout << "]" << std::endl;
 
     }
 };

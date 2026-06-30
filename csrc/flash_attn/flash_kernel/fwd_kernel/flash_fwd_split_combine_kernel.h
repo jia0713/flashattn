@@ -44,7 +44,7 @@ __forceinline__ __device__ void combine_attn_seqk_parallel(const Params &params)
     const uint32_t tidx = threadIdx.x;
     const uint32_t bidx = blockIdx.x;
 
-    const uint64_t lse_size = params.b * params.h * params.seqlen_q;
+    const uint64_t lse_size = uint64_t(params.b) * params.h * params.seqlen_q;
 
     const uint64_t row_offset_lse = bidx * kBlockM;
     Tensor gLSEaccum = make_tensor(make_gmem_ptr(reinterpret_cast<ElementAccum *>(params.softmax_lseaccum_ptr) + row_offset_lse),

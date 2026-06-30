@@ -80,8 +80,10 @@ inline __device__ void compute_dq_dk_dv_1colblock(const Params &params, const in
         + (m_block_max - 1) * kBlockM * params.o_row_stride + bidh * params.o_head_stride;
     const index_t row_offset_dq = binfo.q_offset(params.dq_batch_stride, params.dq_row_stride, bidb)
         + (m_block_max - 1) * kBlockM * params.dq_row_stride + bidh * params.dq_head_stride;
-    const index_t row_offset_dq_accum = binfo.q_offset(params.seqlen_q_rounded * params.h * params.d_rounded, params.h * params.d_rounded, bidb)
-        + ((m_block_max - 1) * kBlockM + (params.cu_seqlens_q == nullptr ? 0 : 128ll * bidb)) * params.h * params.d_rounded + bidh * params.d_rounded
+    const index_t dq_accum_batch_stride = index_t(params.seqlen_q_rounded) * params.h * params.d_rounded;
+    const index_t dq_accum_head_stride = index_t(params.h) * params.d_rounded;
+    const index_t row_offset_dq_accum = binfo.q_offset(dq_accum_batch_stride, dq_accum_head_stride, bidb)
+        + ((m_block_max - 1) * kBlockM + (params.cu_seqlens_q == nullptr ? 0 : 128ll * bidb)) * dq_accum_head_stride + bidh * params.d_rounded
         // If deterministic, each thread block will do atomicAdd to a different dQ_accum buffer.
         + (!params.deterministic ? 0 : blockIdx.x * params.dq_accum_split_stride);
     const index_t row_offset_lse =
@@ -280,7 +282,8 @@ inline __device__ void compute_dq_dk_dv_1colblock(const Params &params, const in
 
     // We'll advance gdQ and gdQaccum before the 1st read/write.
     tdQgdQ.data() = tdQgdQ.data() + kBlockM * params.dq_row_stride;
-    tdQgdQaccum.data() = tdQgdQaccum.data() + kBlockM * params.h * params.d_rounded;
+    const index_t dq_accum_block_stride = index_t(kBlockM) * params.h * params.d_rounded;
+    tdQgdQaccum.data() = tdQgdQaccum.data() + dq_accum_block_stride;
 
     int m_block = m_block_max - 1;
     int m_block_min = (!Is_causal && !Is_local)
@@ -536,7 +539,7 @@ inline __device__ void compute_dq_dk_dv_1colblock(const Params &params, const in
         // if (cute::thread0()) { print(dS); }
 
         Tensor acc_dq = partition_fragment_C(tiled_mma_dq, Shape<Int<kBlockM>, Int<kHeadDim>>{});  // MMA, MMA_N, MMA_K
-        tdQgdQaccum.data() = tdQgdQaccum.data() + (-int(kBlockM * params.h * params.d_rounded));
+        tdQgdQaccum.data() = tdQgdQaccum.data() + (-dq_accum_block_stride);
         if (Is_first || Seq_parallel) {
             clear(acc_dq);
         } else {

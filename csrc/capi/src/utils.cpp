@@ -16,6 +16,9 @@ bool check_continues(const Tensor_t &tensor){
 }
 
 bool check_dtype(const Tensor_t &tensor, InternalTensor::DataType dtype){
+    if(tensor == nullptr) return false;
+    if(tensor->data == nullptr) return false;
+
     auto t = (InternalTensor*)tensor->data;
 
     if(t->dtype != dtype){

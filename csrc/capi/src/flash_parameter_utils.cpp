@@ -262,7 +262,7 @@ void set_params_dgrad(Flash_bwd_params &params,
 // splits as that would incur more HBM reads/writes.
 // So we find the best efficiency, then find the smallest number of splits that gets 85%
 // of the best efficiency.
-int num_splits_heuristic(int batch_nheads_mblocks, int num_SMs, int num_n_blocks, int max_splits) {
+int num_splits_heuristic(int64_t batch_nheads_mblocks, int num_SMs, int num_n_blocks, int max_splits) {
     // If we have enough to almost fill the SMs, then just use 1 split
     //if (batch_nheads_mblocks >= 0.8f * num_SMs) { return 1; }
     max_splits = std::min({max_splits, num_SMs, num_n_blocks});
@@ -285,7 +285,7 @@ int num_splits_heuristic(int batch_nheads_mblocks, int num_SMs, int num_n_blocks
         if (!is_split_eligible(num_splits)) {
             efficiency.push_back(0.f);
         } else {
-            float n_waves = float(batch_nheads_mblocks * num_splits) / num_SMs;
+            float n_waves = float(batch_nheads_mblocks) * num_splits / num_SMs;
             float eff = n_waves / ceil(n_waves);
             // printf("num_splits = %d, eff = %f\n", num_splits, eff);
             if (eff > max_efficiency) { max_efficiency = eff; }

@@ -24,7 +24,7 @@ using namespace mcFlashAttn;
 // splits as that would incur more HBM reads/writes.
 // So we find the best efficiency, then find the smallest number of splits that gets 85%
 // of the best efficiency.
-int num_splits_heuristic(int batch_nheads_mblocks, int num_SMs, int num_n_blocks, int max_splits) {
+int num_splits_heuristic(int64_t batch_nheads_mblocks, int num_SMs, int num_n_blocks, int max_splits) {
     // If we have enough to almost fill the SMs, then just use 1 split
     if (batch_nheads_mblocks >= 0.8f * num_SMs) { return 1; }
     // 改动3: 保证每个 split 主循环至少 8 次, num_n_blocks < 8 时根本不 split
@@ -52,7 +52,7 @@ int num_splits_heuristic(int batch_nheads_mblocks, int num_SMs, int num_n_blocks
         if (!is_split_eligible(num_splits)) {
             efficiency.push_back(0.f);
         } else {
-            float n_waves = float(batch_nheads_mblocks * num_splits) / num_SMs;
+            float n_waves = float(batch_nheads_mblocks) * num_splits / num_SMs;
             float eff = n_waves / ceil(n_waves);
             // printf("num_splits = %d, eff = %f\n", num_splits, eff);
             if (eff > max_efficiency) { max_efficiency = eff; }
@@ -165,7 +165,7 @@ void compute_params_numsplits(mcFlashAttn::Flash_fwd_params &params, const int n
             }
             // 改动2: xcore1000 (dprops.major == 10) max_splits 限制为 13, 其它架构保持 128
             const int max_splits_kv = (dprops.major == 10) ? 13 : 128;
-            params.num_splits = num_splits_heuristic(batch_size * num_heads * num_m_blocks,  AP_nums * block_nums_per_AP,
+            params.num_splits = num_splits_heuristic(int64_t(batch_size) * num_heads * num_m_blocks,  AP_nums * block_nums_per_AP,
                                                      num_n_blocks, max_splits_kv);
         }
     }
@@ -187,7 +187,7 @@ void update_params_numsplits(mcFlashAttn::Flash_fwd_params &params, const int bl
     if (p_dropout == 0.0f) {  // SplitKV is not implemented for dropout
         // 改动2: xcore1000 (dprops.major == 10) max_splits 限制为 13, 其它架构保持 128
         const int max_splits_kv = (dprops.major == 10) ? 13 : 128;
-        params.num_splits = num_splits_heuristic(batch_size * num_heads * num_m_blocks,  AP_nums * block_nums_per_AP,
+        params.num_splits = num_splits_heuristic(int64_t(batch_size) * num_heads * num_m_blocks,  AP_nums * block_nums_per_AP,
                                                     num_n_blocks, max_splits_kv);
     }
 }

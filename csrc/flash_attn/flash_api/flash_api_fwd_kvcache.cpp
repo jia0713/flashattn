@@ -3,8 +3,25 @@
 #include "flash_parameter_utils.h"
 #include "run_mha.h"
 #include "host_utils.h"
+#include "flash_splitkv.h"
 
 using namespace mcFlashAttn;
+
+namespace {
+
+void allocate_splitkv_accum(Flash_fwd_params &params, at::Tensor &softmax_lse_accum, at::Tensor &out_accum) {
+    TORCH_CHECK(params.num_splits >= 1 && params.num_splits <= 128,
+                "num_splits must be in [1, 128]");
+    if (params.num_splits <= 1) { return; }
+
+    auto opts = torch::TensorOptions().dtype(torch::kFloat32).device(torch::kCUDA);
+    softmax_lse_accum = torch::empty({params.num_splits, params.b, params.h, params.seqlen_q}, opts);
+    out_accum = torch::empty({params.num_splits, params.b, params.h, params.seqlen_q, params.d_rounded}, opts);
+    params.softmax_lseaccum_ptr = softmax_lse_accum.data_ptr();
+    params.oaccum_ptr = out_accum.data_ptr();
+}
+
+}  // namespace
 
 std::vector<at::Tensor>
 mha_fwd_kvcache(at::Tensor &q,                 // batch_size x seqlen_q x num_heads x head_size
@@ -278,7 +295,9 @@ mha_fwd_kvcache(at::Tensor &q,                 // batch_size x seqlen_q x num_he
     auto stream = at::cuda::getCurrentCUDAStream().stream();
     // Only split kernel supports appending to KV cache, or indexing to the cache with cache_batch_idx,
     // or paged KV cache
-    params.num_splits = num_splits;
+    compute_params_numsplits(params, num_splits);
+    at::Tensor softmax_lse_accum, out_accum;
+    allocate_splitkv_accum(params, softmax_lse_accum, out_accum);
     run_mha_fwd(params, stream, /*force_split_kernel*/k_.has_value() || cache_batch_idx_.has_value() || paged_KV);
 
     if (head_size_og % 8 != 0) {
@@ -585,6 +604,9 @@ mha_fwd_kvcache_dequant(at::Tensor &q,               // batch_size x seqlen_q x 
     auto stream = at::cuda::getCurrentCUDAStream().stream();
     // Only split kernel supports appending to KV cache, or indexing to the cache with cache_batch_idx,
     // or paged KV cache
+    compute_params_numsplits(params, num_splits);
+    at::Tensor softmax_lse_accum, out_accum;
+    allocate_splitkv_accum(params, softmax_lse_accum, out_accum);
     run_mha_fwd(params, stream, /*force_split_kernel*/k_.has_value() || cache_batch_idx_.has_value() || paged_KV);
 
     if (head_size_og % 8 != 0) {

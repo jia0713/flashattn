@@ -208,6 +208,12 @@ dim3 flash_fwd_splitkv_compute_grid_dim(const int& num_m_block,const int& num_sp
             z = num_splits;
         }
         break;
+        default:{
+            x = num_splits;
+            y = h * b;
+            z = num_m_block;
+        }
+        break;
     }
     dim3 grid(x, y, z);
     return grid;

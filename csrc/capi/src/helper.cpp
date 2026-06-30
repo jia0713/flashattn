@@ -7,7 +7,7 @@
 // splits as that would incur more HBM reads/writes.
 // So we find the best efficiency, then find the smallest number of splits that gets 85%
 // of the best efficiency.
-inline int num_splits_heuristic(int batch_nheads_mblocks, int num_SMs, int num_n_blocks, int max_splits) {
+inline int num_splits_heuristic(int64_t batch_nheads_mblocks, int num_SMs, int num_n_blocks, int max_splits) {
     // If we have enough to almost fill the SMs, then just use 1 split
     //if (batch_nheads_mblocks >= 0.8f * num_SMs) { return 1; }
     max_splits = std::min({max_splits, num_SMs, num_n_blocks});
@@ -30,7 +30,7 @@ inline int num_splits_heuristic(int batch_nheads_mblocks, int num_SMs, int num_n
         if (!is_split_eligible(num_splits)) {
             efficiency.push_back(0.f);
         } else {
-            float n_waves = float(batch_nheads_mblocks * num_splits) / num_SMs;
+            float n_waves = float(batch_nheads_mblocks) * num_splits / num_SMs;
             float eff = n_waves / ceil(n_waves);
             // printf("num_splits = %d, eff = %f\n", num_splits, eff);
             if (eff > max_efficiency) { max_efficiency = eff; }
@@ -66,7 +66,7 @@ int compute_num_splits(int batch_size,int num_heads,int head_size,int max_seqlen
     mcDeviceProp_t dprops;
     mcGetDeviceProperties(&dprops, deviceId);
 
-    return num_splits_heuristic(batch_size * num_heads * num_m_blocks, dprops.multiProcessorCount, num_n_blocks, 128);
+    return num_splits_heuristic(int64_t(batch_size) * num_heads * num_m_blocks, dprops.multiProcessorCount, num_n_blocks, 128);
 }
 
 int check_seqlenq_ngroups_swapped(int seqlen_q,int num_heads,int num_heads_k,int window_size_left,
@@ -80,10 +80,10 @@ int check_seqlenq_ngroups_swapped(int seqlen_q,int num_heads,int num_heads_k,int
 void release_extend_param(mcflashattnExtendParameter_t extend_param){
     if(extend_param){
         if(extend_param->leftpad_k_){
-            free(extend_param->leftpad_k_);
+            release_tensor(extend_param->leftpad_k_);
         }
         if(extend_param->block_table_){
-            free(extend_param->block_table_);
+            release_tensor(extend_param->block_table_);
         }
         free(extend_param);
     }

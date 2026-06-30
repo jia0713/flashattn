@@ -187,11 +187,13 @@ void* get_tensor_data(Tensor_t tensor){
 int get_tensor_size(Tensor_t tensor,int index){
     if(tensor && tensor->data){
         auto internal_tensor = ((InternalTensor*)tensor->data);
+        const int ndim = static_cast<int>(internal_tensor->sizes.size());
         if(index < 0){
-            int idx = internal_tensor->sizes.size() + index;
+            int idx = ndim + index;
             if(idx < 0) return -1;
             return internal_tensor->sizes[idx];
         }else {
+            if(index >= ndim) return -1;
             return internal_tensor->sizes[index];
         }
     }
@@ -201,11 +203,13 @@ int get_tensor_size(Tensor_t tensor,int index){
 int get_tensor_stride(Tensor_t tensor,int index){
     if(tensor && tensor->data){
         auto internal_tensor = ((InternalTensor*)tensor->data);
+        const int ndim = static_cast<int>(internal_tensor->strides.size());
         if(index < 0){
-            int idx = internal_tensor->strides.size() + index;
+            int idx = ndim + index;
             if(idx < 0) return -1;
             return internal_tensor->strides[idx];
         }else {
+            if(index >= ndim) return -1;
             return internal_tensor->strides[index];
         }
     }
