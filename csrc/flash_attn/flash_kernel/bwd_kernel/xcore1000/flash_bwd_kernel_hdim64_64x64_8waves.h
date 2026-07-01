@@ -259,7 +259,8 @@ inline __device__ void compute_dq_dk_dv_1colblock_hdim64_64x64_8waves(const Para
 
     // We'll advance gdQ and gdQaccum before the 1st read/write.
     tdQgdQ.data() = tdQgdQ.data() + kBlockM * params.dq_row_stride;
-    tdQgdQaccum.data() = tdQgdQaccum.data() + kBlockM * params.h * params.d_rounded;
+    const index_t dq_accum_block_stride = index_t(kBlockM) * params.h * params.d_rounded;
+    tdQgdQaccum.data() = tdQgdQaccum.data() + dq_accum_block_stride;
 
     int m_block = m_block_max - 1;
     int m_block_min = (!Is_causal && !Is_local)
@@ -593,7 +594,7 @@ inline __device__ void compute_dq_dk_dv_1colblock_hdim64_64x64_8waves(const Para
         cute::copy(smem_tiled_copy_PdS, tdSadS, tdSsdS);
         sync_threads();
 
-        tdQgdQaccum.data() = tdQgdQaccum.data() + (-int(kBlockM * params.h * params.d_rounded));
+        tdQgdQaccum.data() = tdQgdQaccum.data() + (-dq_accum_block_stride);
         clear(acc_dq);
         flash::gemm</*A_in_regs=*/false, /*B_in_regs=*/Kernel_traits::Is_K_in_regs>(acc_dq, tdQrdS, tdQrKt, tdQsdS, tdQsKt, tiled_mma_dq,
                     smem_tiled_copy_dS, smem_tiled_copy_Kt, smem_thr_copy_dS, smem_thr_copy_Kt);

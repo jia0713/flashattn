@@ -273,7 +273,8 @@ inline __device__ void compute_dq_dk_dv_1colblock_hdim96_32x64_4waves(const Para
 
     // We'll advance gdQ and gdQaccum before the 1st read/write.
     tdQgdQ.data() = tdQgdQ.data() + kBlockM * params.dq_row_stride;
-    tdQgdQaccum.data() = tdQgdQaccum.data() + kBlockM * params.h * params.d_rounded;
+    const index_t dq_accum_block_stride = index_t(kBlockM) * params.h * params.d_rounded;
+    tdQgdQaccum.data() = tdQgdQaccum.data() + dq_accum_block_stride;
 
     int m_block = m_block_max - 1;
     int m_block_min = (!Is_causal && !Is_local)
@@ -648,7 +649,7 @@ inline __device__ void compute_dq_dk_dv_1colblock_hdim96_32x64_4waves(const Para
         }
 
         CUTE_STATIC_ASSERT_V(size(acc_dq) == size(tdQgdQaccum));
-        tdQgdQaccum.data() = tdQgdQaccum.data() + (-int(kBlockM * params.h * params.d_rounded));
+        tdQgdQaccum.data() = tdQgdQaccum.data() + (-dq_accum_block_stride);
         #pragma unroll
         for (int i = 0; i < size(acc_dq); ++i) { atomicAdd(&tdQgdQaccum(i), acc_dq(i)); }
 

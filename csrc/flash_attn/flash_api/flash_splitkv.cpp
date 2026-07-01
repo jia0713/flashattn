@@ -69,29 +69,6 @@ int num_splits_heuristic(int64_t batch_nheads_mblocks, int num_SMs, int num_n_bl
     return 1;
 }
 
-void malloc_accum_by_numsplits(Flash_fwd_params &params) {
-
-    auto num_heads = params.h;
-    auto head_size = params.d;
-    auto batch_size = params.b;
-    auto max_seqlen_k = params.seqlen_k;
-    auto max_seqlen_q = params.seqlen_q;
-    auto head_size_rounded = params.d_rounded;
-    auto p_dropout = 1.f - params.p_dropout;
-
-    auto opts = torch::TensorOptions().dtype(torch::kFloat32).device(torch::kCUDA);
-
-    if (p_dropout == 0.0f) {  // SplitKV is not implemented for dropout
-        if (params.num_splits > 1) {
-            at::Tensor softmax_lse_accum = torch::empty({params.num_splits, batch_size, num_heads, max_seqlen_q}, opts.dtype(torch::kFloat32));
-            at::Tensor out_accum = torch::empty({params.num_splits, batch_size, num_heads, max_seqlen_q, head_size_rounded}, opts.dtype(torch::kFloat32));
-            params.softmax_lseaccum_ptr = softmax_lse_accum.data_ptr();
-            params.oaccum_ptr = out_accum.data_ptr();
-        }
-        TORCH_CHECK(params.num_splits <= 128, "num_splits > 128 not supported");
-    }
-}
-
 // Tile size should match the advance dispatch and default dispatch
 std::pair<int, int> get_tile_size(int head_size_rounded, int seqlen_k, int seqlen_q) {
     int block_m = 64, block_n = 64;
@@ -142,8 +119,6 @@ void compute_params_numsplits(mcFlashAttn::Flash_fwd_params &params, const int n
     const int num_n_blocks = (max_seqlen_k + block_n - 1) / block_n;
     const int num_m_blocks = (max_seqlen_q + block_m - 1) / block_m;
     params.num_splits = num_splits;
-    at::Tensor softmax_lse_accum;
-    at::Tensor out_accum;
 
     if (p_dropout == 0.0f) {  // SplitKV is not implemented for dropout
         if (num_splits < 1) {
@@ -170,24 +145,4 @@ void compute_params_numsplits(mcFlashAttn::Flash_fwd_params &params, const int n
         }
     }
 
-}
-
-void update_params_numsplits(mcFlashAttn::Flash_fwd_params &params, const int block_nums_per_AP, const int block_n, const int block_m) {
-    auto num_heads = params.h;
-    auto batch_size = params.b;
-    auto max_seqlen_k = params.seqlen_k;
-    auto max_seqlen_q = params.seqlen_q;
-    auto p_dropout = 1.f - params.p_dropout;
-    auto dprops = flash::mcGetCurrentDeviceProperties();
-    const int AP_nums = dprops.multiProcessorCount;
-
-    const int num_n_blocks = (max_seqlen_k + block_n - 1) / block_n;
-    const int num_m_blocks = (max_seqlen_q + block_m - 1) / block_m;
-
-    if (p_dropout == 0.0f) {  // SplitKV is not implemented for dropout
-        // 改动2: xcore1000 (dprops.major == 10) max_splits 限制为 13, 其它架构保持 128
-        const int max_splits_kv = (dprops.major == 10) ? 13 : 128;
-        params.num_splits = num_splits_heuristic(int64_t(batch_size) * num_heads * num_m_blocks,  AP_nums * block_nums_per_AP,
-                                                    num_n_blocks, max_splits_kv);
-    }
 }

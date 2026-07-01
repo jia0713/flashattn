@@ -291,7 +291,8 @@ inline __device__ void compute_dq_dk_dv_1colblock_hdim256_32x32_8wave(const Para
     // Prologue
 
     // We'll advance gdQ and gdQaccum before the 1st read/write.
-    tdQgdQaccum.data() = tdQgdQaccum.data() + kBlockM * params.h * params.d_rounded;
+    const index_t dq_accum_block_stride = index_t(kBlockM) * params.h * params.d_rounded;
+    tdQgdQaccum.data() = tdQgdQaccum.data() + dq_accum_block_stride;
 
     int m_block = m_block_max - 1;
     int m_block_min = (!Is_causal && !Is_local)
@@ -616,7 +617,7 @@ inline __device__ void compute_dq_dk_dv_1colblock_hdim256_32x32_8wave(const Para
             flash::sts_transpose(tdSrdS, tdStsdSt);
         }
         Tensor acc_dq = partition_fragment_C(tiled_mma_dq, Shape<Int<kBlockM>, Int<kHeadDimQ>>{});  // MMA, MMA_N, MMA_K
-        tdQgdQaccum.data() = tdQgdQaccum.data() + (-int(kBlockM * params.h * params.d_rounded));
+        tdQgdQaccum.data() = tdQgdQaccum.data() + (-dq_accum_block_stride);
         if (m_block > m_block_min) {
             // Advance gdO gQ
             tQgQ.data() = tQgQ.data() + (-int(kBlockM * params.q_row_stride));

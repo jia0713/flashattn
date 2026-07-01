@@ -361,7 +361,8 @@ __forceinline__ __device__ void compute_dq_dk_dv_1colblock_hdim128_32x128(const 
     // Prologue
 
     // We'll advance gdQ and gdQaccum before the 1st read/write.
-    tdQgdQaccum.data() = tdQgdQaccum.data() + kBlockM * params.h * params.d_rounded;
+    const index_t dq_accum_block_stride = index_t(kBlockM) * params.h * params.d_rounded;
+    tdQgdQaccum.data() = tdQgdQaccum.data() + dq_accum_block_stride;
 
     int m_block = m_block_max - 1;
     int m_block_min = (!Is_causal && !Is_local)
@@ -652,7 +653,7 @@ __forceinline__ __device__ void compute_dq_dk_dv_1colblock_hdim128_32x128(const 
         }
 
         Tensor acc_dq = partition_fragment_C(tiled_mma_dq, Shape<Int<kBlockM>, Int<kHeadDim>>{});  // MMA, MMA_N, MMA_K
-        tdQgdQaccum.data() = tdQgdQaccum.data() + (-int(kBlockM * params.h * params.d_rounded));
+        tdQgdQaccum.data() = tdQgdQaccum.data() + (-dq_accum_block_stride);
         clear(acc_dq);
 
         Tensor dS_reshaped = make_tensor(dS.data(), acc_dp.layout());
