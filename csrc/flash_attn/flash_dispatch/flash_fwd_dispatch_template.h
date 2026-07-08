@@ -80,7 +80,7 @@ namespace mcFlashAttn {
         check_fwd_split_meta_supported(meta);
         CHECK_MSG(meta.arch == arch && meta.headdim == Headdim, "fwd_split kernel meta does not match dispatch arch/head dimension");
         launch_params.block_type = 2;
-        FWD_SPLIT_META_SWITCH(meta, kBlockM, kBlockN, kNWarps, Is_Q_in_regs, Share_Q_K_smem, [&] {
+        FWD_SPLIT_META_SWITCH(meta, arch, Headdim, kBlockM, kBlockN, kNWarps, Is_Q_in_regs, Share_Q_K_smem, [&] {
             if constexpr (arch == Arch::xcore1000) {
                 Xcore1000::run_flash_splitkv_fwd_template<Headdim, kBlockM, kBlockN, kNWarps, Is_Q_in_regs, Share_Q_K_smem, elem_type>(params, launch_params, stream);
             } else if constexpr (arch == Arch::xcore1500) {

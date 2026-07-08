@@ -140,12 +140,13 @@ inline void check_fwd_split_meta_supported(const FwdSplitKernelMeta &meta) {
 
 } // namespace mcFlashAttn
 
-#define FWD_SPLIT_META_SWITCH(META, kBlockM, kBlockN, kNWarps, Is_Q_in_regs, Share_Q_K_smem, ...) \
-    [&] {                                                                                         \
-        const auto &meta__ = (META);                                                              \
-        mcFlashAttn::check_fwd_split_meta_supported(meta__);                                      \
-        if (meta__.block_m == 16 && meta__.block_n == 16 && meta__.nwarps == 1 &&                 \
-            meta__.is_q_in_regs && meta__.share_q_k_smem) {                                      \
+#define FWD_SPLIT_META_SWITCH(META, kArch, kHeadDim, kBlockM, kBlockN, kNWarps, Is_Q_in_regs, Share_Q_K_smem, ...) \
+    [&] {                                                                                                      \
+        const auto &meta__ = (META);                                                                           \
+        mcFlashAttn::check_fwd_split_meta_supported(meta__);                                                   \
+        if constexpr ((kArch) == Arch::xcore1000 && ((kHeadDim) == 64 || (kHeadDim) == 128)) {                 \
+        if (meta__.block_m == 16 && meta__.block_n == 16 && meta__.nwarps == 1 &&                              \
+            meta__.is_q_in_regs && meta__.share_q_k_smem) {                                                   \
             constexpr static int kBlockM = 16;                                                    \
             constexpr static int kBlockN = 16;                                                    \
             constexpr static int kNWarps = 1;                                                     \
@@ -153,8 +154,10 @@ inline void check_fwd_split_meta_supported(const FwdSplitKernelMeta &meta) {
             constexpr static bool Share_Q_K_smem = true;                                         \
             return __VA_ARGS__();                                                                 \
         }                                                                                         \
-        if (meta__.block_m == 16 && meta__.block_n == 32 && meta__.nwarps == 1 &&                 \
-            meta__.is_q_in_regs && meta__.share_q_k_smem) {                                      \
+        }                                                                                         \
+        if constexpr ((kArch) == Arch::xcore1500 && (kHeadDim) == 128) {                           \
+        if (meta__.block_m == 16 && meta__.block_n == 32 && meta__.nwarps == 1 &&                  \
+            meta__.is_q_in_regs && meta__.share_q_k_smem) {                                       \
             constexpr static int kBlockM = 16;                                                    \
             constexpr static int kBlockN = 32;                                                    \
             constexpr static int kNWarps = 1;                                                     \
@@ -162,8 +165,10 @@ inline void check_fwd_split_meta_supported(const FwdSplitKernelMeta &meta) {
             constexpr static bool Share_Q_K_smem = true;                                         \
             return __VA_ARGS__();                                                                 \
         }                                                                                         \
-        if (meta__.block_m == 32 && meta__.block_n == 32 && meta__.nwarps == 2 &&                 \
-            meta__.is_q_in_regs && meta__.share_q_k_smem) {                                      \
+        }                                                                                         \
+        if constexpr ((kArch) == Arch::xcore1000 && ((kHeadDim) == 128 || (kHeadDim) == 512)) {    \
+        if (meta__.block_m == 32 && meta__.block_n == 32 && meta__.nwarps == 2 &&                  \
+            meta__.is_q_in_regs && meta__.share_q_k_smem) {                                       \
             constexpr static int kBlockM = 32;                                                    \
             constexpr static int kBlockN = 32;                                                    \
             constexpr static int kNWarps = 2;                                                     \
@@ -171,8 +176,10 @@ inline void check_fwd_split_meta_supported(const FwdSplitKernelMeta &meta) {
             constexpr static bool Share_Q_K_smem = true;                                         \
             return __VA_ARGS__();                                                                 \
         }                                                                                         \
-        if (meta__.block_m == 64 && meta__.block_n == 32 && meta__.nwarps == 4 &&                 \
-            meta__.is_q_in_regs && meta__.share_q_k_smem) {                                      \
+        }                                                                                         \
+        if constexpr ((kArch) == Arch::xcore1000 && (kHeadDim) == 256) {                           \
+        if (meta__.block_m == 64 && meta__.block_n == 32 && meta__.nwarps == 4 &&                  \
+            meta__.is_q_in_regs && meta__.share_q_k_smem) {                                       \
             constexpr static int kBlockM = 64;                                                    \
             constexpr static int kBlockN = 32;                                                    \
             constexpr static int kNWarps = 4;                                                     \
@@ -180,8 +187,14 @@ inline void check_fwd_split_meta_supported(const FwdSplitKernelMeta &meta) {
             constexpr static bool Share_Q_K_smem = true;                                         \
             return __VA_ARGS__();                                                                 \
         }                                                                                         \
-        if (meta__.block_m == 64 && meta__.block_n == 64 && meta__.nwarps == 4 &&                 \
-            meta__.is_q_in_regs && meta__.share_q_k_smem) {                                      \
+        }                                                                                         \
+        if constexpr (((kArch) == Arch::xcore1000 && ((kHeadDim) == 32 || (kHeadDim) == 64 ||      \
+                       (kHeadDim) == 96 || (kHeadDim) == 128 || (kHeadDim) == 160 ||               \
+                       (kHeadDim) == 192)) ||                                                     \
+                      ((kArch) == Arch::xcore1500 && ((kHeadDim) == 32 || (kHeadDim) == 96 ||      \
+                       (kHeadDim) == 160))) {                                                     \
+        if (meta__.block_m == 64 && meta__.block_n == 64 && meta__.nwarps == 4 &&                  \
+            meta__.is_q_in_regs && meta__.share_q_k_smem) {                                       \
             constexpr static int kBlockM = 64;                                                    \
             constexpr static int kBlockN = 64;                                                    \
             constexpr static int kNWarps = 4;                                                     \
@@ -189,8 +202,10 @@ inline void check_fwd_split_meta_supported(const FwdSplitKernelMeta &meta) {
             constexpr static bool Share_Q_K_smem = true;                                         \
             return __VA_ARGS__();                                                                 \
         }                                                                                         \
-        if (meta__.block_m == 128 && meta__.block_n == 64 && meta__.nwarps == 4 &&                \
-            meta__.is_q_in_regs && meta__.share_q_k_smem) {                                      \
+        }                                                                                         \
+        if constexpr ((kArch) == Arch::xcore1500 && (kHeadDim) == 128) {                           \
+        if (meta__.block_m == 128 && meta__.block_n == 64 && meta__.nwarps == 4 &&                 \
+            meta__.is_q_in_regs && meta__.share_q_k_smem) {                                       \
             constexpr static int kBlockM = 128;                                                   \
             constexpr static int kBlockN = 64;                                                    \
             constexpr static int kNWarps = 4;                                                     \
@@ -198,14 +213,18 @@ inline void check_fwd_split_meta_supported(const FwdSplitKernelMeta &meta) {
             constexpr static bool Share_Q_K_smem = true;                                         \
             return __VA_ARGS__();                                                                 \
         }                                                                                         \
-        if (meta__.block_m == 128 && meta__.block_n == 64 && meta__.nwarps == 4 &&                \
-            !meta__.is_q_in_regs && !meta__.share_q_k_smem) {                                    \
+        }                                                                                         \
+        if constexpr ((kArch) == Arch::xcore1500 && ((kHeadDim) == 64 || (kHeadDim) == 192 ||      \
+                       (kHeadDim) == 256)) {                                                      \
+        if (meta__.block_m == 128 && meta__.block_n == 64 && meta__.nwarps == 4 &&                 \
+            !meta__.is_q_in_regs && !meta__.share_q_k_smem) {                                     \
             constexpr static int kBlockM = 128;                                                   \
             constexpr static int kBlockN = 64;                                                    \
             constexpr static int kNWarps = 4;                                                     \
             constexpr static bool Is_Q_in_regs = false;                                          \
             constexpr static bool Share_Q_K_smem = false;                                        \
             return __VA_ARGS__();                                                                 \
+        }                                                                                         \
         }                                                                                         \
         throw std::invalid_argument("Unsupported fwd_split kernel tuple: block_m="                 \
                                     + std::to_string(meta__.block_m)                              \
