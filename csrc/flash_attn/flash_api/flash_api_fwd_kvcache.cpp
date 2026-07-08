@@ -3,6 +3,7 @@
 #include "flash_parameter_utils.h"
 #include "run_mha.h"
 #include "host_utils.h"
+#include "flash_splitkv.h"
 
 using namespace mcFlashAttn;
 
@@ -278,8 +279,11 @@ mha_fwd_kvcache(at::Tensor &q,                 // batch_size x seqlen_q x num_he
     auto stream = at::cuda::getCurrentCUDAStream().stream();
     // Only split kernel supports appending to KV cache, or indexing to the cache with cache_batch_idx,
     // or paged KV cache
-    params.num_splits = num_splits;
-    run_mha_fwd(params, stream, /*force_split_kernel*/k_.has_value() || cache_batch_idx_.has_value() || paged_KV);
+    const bool force_split_kernel = k_.has_value() || cache_batch_idx_.has_value() || paged_KV;
+    compute_params_numsplits(params, num_splits, force_split_kernel);
+    auto splitkv_accum = malloc_accum_by_numsplits(params);
+    run_mha_fwd(params, stream, force_split_kernel);
+    (void)splitkv_accum;
 
     if (head_size_og % 8 != 0) {
         out = out.index({"...", torch::indexing::Slice(torch::indexing::None, head_size_og)});
@@ -585,7 +589,11 @@ mha_fwd_kvcache_dequant(at::Tensor &q,               // batch_size x seqlen_q x 
     auto stream = at::cuda::getCurrentCUDAStream().stream();
     // Only split kernel supports appending to KV cache, or indexing to the cache with cache_batch_idx,
     // or paged KV cache
-    run_mha_fwd(params, stream, /*force_split_kernel*/k_.has_value() || cache_batch_idx_.has_value() || paged_KV);
+    const bool force_split_kernel = k_.has_value() || cache_batch_idx_.has_value() || paged_KV;
+    compute_params_numsplits(params, num_splits, force_split_kernel);
+    auto splitkv_accum = malloc_accum_by_numsplits(params);
+    run_mha_fwd(params, stream, force_split_kernel);
+    (void)splitkv_accum;
 
     if (head_size_og % 8 != 0) {
         out = out.index({"...", torch::indexing::Slice(torch::indexing::None, head_size_og)});

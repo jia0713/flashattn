@@ -152,6 +152,13 @@ struct Flash_fwd_params : public Qkv_params {
     bool is_rotary_interleaved;
 
     int num_splits;  // For split-KV version
+    bool split_meta_valid;
+    int split_block_m;
+    int split_block_n;
+    int split_nwarps;
+    bool split_is_q_in_regs;
+    bool split_share_q_k_smem;
+    int split_block_num_per_ap;
 
     void * __restrict__ alibi_slopes_ptr;
     index_t alibi_slopes_batch_stride;

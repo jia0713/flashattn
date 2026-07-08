@@ -8,6 +8,7 @@
 #include <iostream>
 #include "flash_parameter.h"
 #include "../utils/static_switch.h"
+#include "fwd_split_meta.h"
 #define HDIM_ALL
 
 using namespace mcFlashAttn;
@@ -70,6 +71,24 @@ void run_flash_splitkv_fwd_template(Flash_fwd_params &params, mcFlashAttn::Flash
 
 namespace mcFlashAttn {
 
+    template<int Headdim, Arch arch, typename elem_type>
+    inline void run_mha_fwd_splitkv_dispatch_meta(Flash_fwd_params &params, Flash_launch_params &launch_params, const cudaStream_t stream) {
+        if (!params.split_meta_valid) {
+            set_fwd_split_meta(params, select_fwd_split_meta(params));
+        }
+        auto meta = get_fwd_split_meta_from_params(params);
+        check_fwd_split_meta_supported(meta);
+        CHECK_MSG(meta.arch == arch && meta.headdim == Headdim, "fwd_split kernel meta does not match dispatch arch/head dimension");
+        launch_params.block_type = 2;
+        FWD_SPLIT_META_SWITCH(meta, kBlockM, kBlockN, kNWarps, Is_Q_in_regs, Share_Q_K_smem, [&] {
+            if constexpr (arch == Arch::xcore1000) {
+                Xcore1000::run_flash_splitkv_fwd_template<Headdim, kBlockM, kBlockN, kNWarps, Is_Q_in_regs, Share_Q_K_smem, elem_type>(params, launch_params, stream);
+            } else if constexpr (arch == Arch::xcore1500) {
+                Xcore1500::run_flash_splitkv_fwd_template<Headdim, kBlockM, kBlockN, kNWarps, Is_Q_in_regs, Share_Q_K_smem, elem_type>(params, launch_params, stream);
+            }
+        });
+    }
+
     template<int Headdim, Arch arch>
     inline void run_mha_fwd_splitkv_dispatch(Flash_fwd_params &params, const cudaStream_t stream) {
         if constexpr (Headdim == 0) {
@@ -77,239 +96,10 @@ namespace mcFlashAttn {
             return;
         }
         Flash_launch_params launch_params;
-
-        constexpr static int kBlockM = 64;  // Fixed for all head dimensions
-        constexpr static int kBlockN = 64;
         FP16_SWITCH(!params.is_bf16, [&] {
-            launch_params.block_type = 2;
-            if constexpr (arch == Arch::xcore1000) {
-                Xcore1000::run_flash_splitkv_fwd_template<Headdim, kBlockM, kBlockN, 4, true, true, elem_type>(params, launch_params, stream);
-            }
+            run_mha_fwd_splitkv_dispatch_meta<Headdim, arch, elem_type>(params, launch_params, stream);
         });
     }
-
-    #if CHECK_HDIM(32)
-    template<>
-    inline void run_mha_fwd_splitkv_dispatch<32, Arch::xcore1000>(Flash_fwd_params &params, const cudaStream_t stream) {
-        Flash_launch_params launch_params;
-        constexpr static int Headdim = 32;
-
-        constexpr static int kBlockM = 64;
-        constexpr static int kBlockN = 64;
-        FP16_SWITCH(!params.is_bf16, [&] {
-            launch_params.block_type = 2;
-            Xcore1000::run_flash_splitkv_fwd_template<Headdim, kBlockM, kBlockN, 4, true, true, elem_type>(params, launch_params, stream);
-        });
-    }
-
-    template<>
-    inline void run_mha_fwd_splitkv_dispatch<32, Arch::xcore1500>(Flash_fwd_params &params, const cudaStream_t stream) {
-        Flash_launch_params launch_params;
-        constexpr static int Headdim = 32;
-
-        constexpr static int kBlockM = 64;
-        constexpr static int kBlockN = 64;
-        FP16_SWITCH(!params.is_bf16, [&] {
-            launch_params.block_type = 2;
-            Xcore1500::run_flash_splitkv_fwd_template<Headdim, kBlockM, kBlockN, 4, true, true, elem_type>(params, launch_params, stream);
-        });
-    }
-    #endif
-
-    #if CHECK_HDIM(64)
-    template<>
-    inline void run_mha_fwd_splitkv_dispatch<64, Arch::xcore1000>(Flash_fwd_params &params, const cudaStream_t stream) {
-        Flash_launch_params launch_params;
-        constexpr static int Headdim = 64;
-
-        constexpr static int kBlockM = 64;
-        constexpr static int kBlockN = 64;
-        FP16_SWITCH(!params.is_bf16, [&] {
-            launch_params.block_type = 2;
-            Xcore1000::run_flash_splitkv_fwd_template<Headdim, kBlockM, kBlockN, 4, true, true, elem_type>(params, launch_params, stream);
-        });
-    }
-
-    template<>
-    inline void run_mha_fwd_splitkv_dispatch<64, Arch::xcore1500>(Flash_fwd_params &params, const cudaStream_t stream) {
-        Flash_launch_params launch_params;
-        constexpr static int Headdim = 64;
-
-        constexpr static int kBlockM = 128;
-        constexpr static int kBlockN = 64;
-        FP16_SWITCH(!params.is_bf16, [&] {
-            launch_params.block_type = 2;
-            Xcore1500::run_flash_splitkv_fwd_template<Headdim, kBlockM, kBlockN, 4, false, false, elem_type>(params, launch_params, stream);
-        });
-    }
-    #endif
-
-    #if CHECK_HDIM(96)
-    template<>
-    inline void run_mha_fwd_splitkv_dispatch<96, Arch::xcore1000>(Flash_fwd_params &params, const cudaStream_t stream) {
-        Flash_launch_params launch_params;
-        constexpr static int Headdim = 96;
-
-        constexpr static int kBlockM = 64;
-        constexpr static int kBlockN = 64;
-        FP16_SWITCH(!params.is_bf16, [&] {
-            launch_params.block_type = 2;
-            Xcore1000::run_flash_splitkv_fwd_template<Headdim, kBlockM, kBlockN, 4, true, true, elem_type>(params, launch_params, stream);
-        });
-    }
-
-    template<>
-    inline void run_mha_fwd_splitkv_dispatch<96, Arch::xcore1500>(Flash_fwd_params &params, const cudaStream_t stream) {
-        Flash_launch_params launch_params;
-        constexpr static int Headdim = 96;
-
-        constexpr static int kBlockM = 64;
-        constexpr static int kBlockN = 64;
-        FP16_SWITCH(!params.is_bf16, [&] {
-            launch_params.block_type = 2;
-            Xcore1500::run_flash_splitkv_fwd_template<Headdim, kBlockM, kBlockN, 4, true, true, elem_type>(params, launch_params, stream);
-        });
-    }
-    #endif
-
-    #if CHECK_HDIM(128)
-    template<>
-    inline void run_mha_fwd_splitkv_dispatch<128, Arch::xcore1000>(Flash_fwd_params &params, const cudaStream_t stream) {
-        Flash_launch_params launch_params;
-        constexpr static int Headdim = 128;
-
-        constexpr static int kBlockM = 64;
-        constexpr static int kBlockN = 64;
-        FP16_SWITCH(!params.is_bf16, [&] {
-            launch_params.block_type = 2;
-            Xcore1000::run_flash_splitkv_fwd_template<Headdim, kBlockM, kBlockN, 4, true, true, elem_type>(params, launch_params, stream);
-        });
-    }
-
-    template<>
-    inline void run_mha_fwd_splitkv_dispatch<128, Arch::xcore1500>(Flash_fwd_params &params, const cudaStream_t stream) {
-        Flash_launch_params launch_params;
-        constexpr static int Headdim = 128;
-
-        if (params.seqlen_q <= 32) {
-            FP16_SWITCH(!params.is_bf16, [&] {
-                launch_params.block_type = 2;
-                Xcore1500::run_flash_splitkv_fwd_template<Headdim, 16, 32, 1, true, true, elem_type>(params, launch_params, stream);
-            });
-        } else {
-            FP16_SWITCH(!params.is_bf16, [&] {
-                launch_params.block_type = 2;
-                Xcore1500::run_flash_splitkv_fwd_template<Headdim, 128, 64, 4, true, true, elem_type>(params, launch_params, stream);
-            });
-        }
-    }
-    #endif
-
-    #if CHECK_HDIM(160)
-    template<>
-    inline void run_mha_fwd_splitkv_dispatch<160, Arch::xcore1000>(Flash_fwd_params &params, const cudaStream_t stream) {
-        Flash_launch_params launch_params;
-        constexpr static int Headdim = 160;
-
-        constexpr static int kBlockM = 64;
-        constexpr static int kBlockN = 64;
-        FP16_SWITCH(!params.is_bf16, [&] {
-            launch_params.block_type = 2;
-            Xcore1000::run_flash_splitkv_fwd_template<Headdim, kBlockM, kBlockN, 4, true, true, elem_type>(params, launch_params, stream);
-        });
-    }
-
-    template<>
-    inline void run_mha_fwd_splitkv_dispatch<160, Arch::xcore1500>(Flash_fwd_params &params, const cudaStream_t stream) {
-        Flash_launch_params launch_params;
-        constexpr static int Headdim = 160;
-
-        constexpr static int kBlockM = 64;
-        constexpr static int kBlockN = 64;
-        FP16_SWITCH(!params.is_bf16, [&] {
-            launch_params.block_type = 2;
-            Xcore1500::run_flash_splitkv_fwd_template<Headdim, kBlockM, kBlockN, 4, true, true, elem_type>(params, launch_params, stream);
-        });
-    }
-    #endif
-
-    #if CHECK_HDIM(192)
-    template<>
-    inline void run_mha_fwd_splitkv_dispatch<192, Arch::xcore1000>(Flash_fwd_params &params, const cudaStream_t stream) {
-        Flash_launch_params launch_params;
-        constexpr static int Headdim = 192;
-
-        constexpr static int kBlockM = 64;
-        constexpr static int kBlockN = 64;
-        FP16_SWITCH(!params.is_bf16, [&] {
-                launch_params.block_type = 2;
-                Xcore1000::run_flash_splitkv_fwd_template<Headdim, kBlockM, kBlockN, 4, true, true, elem_type>(params, launch_params, stream);
-        });
-    }
-
-    template<>
-    inline void run_mha_fwd_splitkv_dispatch<192, Arch::xcore1500>(Flash_fwd_params &params, const cudaStream_t stream) {
-        Flash_launch_params launch_params;
-        constexpr static int Headdim = 192;
-
-        constexpr static int kBlockM = 128;
-        constexpr static int kBlockN = 64;
-        FP16_SWITCH(!params.is_bf16, [&] {
-            launch_params.block_type = 2;
-            Xcore1500::run_flash_splitkv_fwd_template<Headdim, kBlockM, kBlockN, 4, false, false, elem_type>(params, launch_params, stream);
-        });
-    }
-    #endif
-
-    #if CHECK_HDIM(256)
-    template<>
-    inline void run_mha_fwd_splitkv_dispatch<256, Arch::xcore1000>(Flash_fwd_params &params, const cudaStream_t stream) {
-        Flash_launch_params launch_params;
-        constexpr static int Headdim = 256;
-
-        constexpr static int kBlockM = 64;
-        constexpr static int kBlockN = 64;
-        FP16_SWITCH(!params.is_bf16, [&] {
-            launch_params.block_type = 2;
-            Xcore1000::run_flash_splitkv_fwd_template<Headdim, kBlockM, kBlockN, 4, true, true, elem_type>(params, launch_params, stream);
-        });
-    }
-
-    template<>
-    inline void run_mha_fwd_splitkv_dispatch<256, Arch::xcore1500>(Flash_fwd_params &params, const cudaStream_t stream) {
-        Flash_launch_params launch_params;
-        constexpr static int Headdim = 256;
-
-        constexpr static int kBlockM = 128;
-        constexpr static int kBlockN = 64;
-        FP16_SWITCH(!params.is_bf16, [&] {
-            launch_params.block_type = 2;
-            Xcore1500::run_flash_splitkv_fwd_template<Headdim, kBlockM, kBlockN, 4, false, false, elem_type>(params, launch_params, stream);
-        });
-    }
-    #endif
-
-    #if CHECK_HDIM(512)
-    template<>
-    inline void run_mha_fwd_splitkv_dispatch<512, Arch::xcore1000>(Flash_fwd_params &params, const cudaStream_t stream) {
-        Flash_launch_params launch_params;
-        constexpr static int Headdim = 512;
-
-        constexpr static int kBlockM = 32;
-        constexpr static int kBlockN = 32;
-        FP16_SWITCH(!params.is_bf16, [&] {
-            launch_params.block_type = 2;
-            Xcore1000::run_flash_splitkv_fwd_template<Headdim, kBlockM, kBlockN, 2, true, true, elem_type>(params, launch_params, stream);
-        });
-    }
-
-    template<>
-    inline void run_mha_fwd_splitkv_dispatch<512, Arch::xcore1500>(Flash_fwd_params &params, cudaStream_t stream) {
-        std::cerr << "Xcore1500 splitkv currently does not support headdim 512." << std::endl;
-        return;
-    }
-    #endif
-
 } // namespace mcFlashAttn end
 
 
