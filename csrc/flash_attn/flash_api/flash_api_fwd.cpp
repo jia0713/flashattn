@@ -3,6 +3,7 @@
 #include "flash_parameter_utils.h"
 #include "run_mha.h"
 #include "host_utils.h"
+#include "flash_splitkv.h"
 
 using namespace mcFlashAttn;
 
@@ -240,10 +241,14 @@ mha_fwd(at::Tensor &q,         // batch_size x seqlen_q x num_heads x head_size
         auto stream = at::cuda::getCurrentCUDAStream().stream();
         if (attn_mask_.has_value() || head_size != head_size_v){
             params.num_splits = 1;
+            auto splitkv_accum = malloc_accum_by_numsplits(params);
             run_mha_fwd(params, stream);
+            (void)splitkv_accum;
         }else {
-            params.num_splits = num_splits;
+            compute_params_numsplits(params, num_splits, force_split_kernel);
+            auto splitkv_accum = malloc_accum_by_numsplits(params);
             run_mha_fwd(params, stream, force_split_kernel);
+            (void)splitkv_accum;
         }
     } else {
         // If seqlen_k == 0, then we have an empty tensor. We need to set the output to 0.
@@ -542,10 +547,12 @@ mha_varlen_fwd(at::Tensor &q,  // total_q x num_heads x head_size, total_q := \s
         auto stream = at::cuda::getCurrentCUDAStream().stream();
         if (seqlenq_ngroups_swapped) {
             // Only apply split-k for decoding
-            params.num_splits = 0;
+            compute_params_numsplits(params, 0, paged_KV);
+            auto splitkv_accum = malloc_accum_by_numsplits(params);
             run_mha_fwd(params, stream, paged_KV);
+            (void)splitkv_accum;
         }else {
-            params.num_splits = 1;
+            compute_params_numsplits(params, 1, paged_KV);
             run_mha_fwd(params, stream, paged_KV);
         }
     } else {

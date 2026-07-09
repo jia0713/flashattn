@@ -15,6 +15,7 @@
 #include "flash_parameter.h"
 #include "flash_splitkv.h"
 #include "host_utils.h"
+#include "../flash_dispatch/fwd_split_meta.h"
 
 using namespace mcFlashAttn;
 
@@ -63,103 +64,73 @@ int num_splits_heuristic(int batch_nheads_mblocks, int num_SMs, int num_n_blocks
     return 1;
 }
 
-void malloc_accum_by_numsplits(Flash_fwd_params &params) {
+SplitKVAccumTensors malloc_accum_by_numsplits(Flash_fwd_params &params) {
 
     auto num_heads = params.h;
-    auto head_size = params.d;
     auto batch_size = params.b;
-    auto max_seqlen_k = params.seqlen_k;
     auto max_seqlen_q = params.seqlen_q;
     auto head_size_rounded = params.d_rounded;
     auto p_dropout = 1.f - params.p_dropout;
 
     auto opts = torch::TensorOptions().dtype(torch::kFloat32).device(torch::kCUDA);
+    SplitKVAccumTensors accum;
 
     if (p_dropout == 0.0f) {  // SplitKV is not implemented for dropout
-        if (params.num_splits > 1) {
-            at::Tensor softmax_lse_accum = torch::empty({params.num_splits, batch_size, num_heads, max_seqlen_q}, opts.dtype(torch::kFloat32));
-            at::Tensor out_accum = torch::empty({params.num_splits, batch_size, num_heads, max_seqlen_q, head_size_rounded}, opts.dtype(torch::kFloat32));
-            params.softmax_lseaccum_ptr = softmax_lse_accum.data_ptr();
-            params.oaccum_ptr = out_accum.data_ptr();
+        if (params.fwd_kernel_path == FwdKernelPathSplitKV && params.num_splits > 1) {
+            accum.softmax_lse_accum = torch::empty({params.num_splits, batch_size, num_heads, max_seqlen_q}, opts.dtype(torch::kFloat32));
+            accum.out_accum = torch::empty({params.num_splits, batch_size, num_heads, max_seqlen_q, head_size_rounded}, opts.dtype(torch::kFloat32));
+            params.softmax_lseaccum_ptr = accum.softmax_lse_accum.data_ptr();
+            params.oaccum_ptr = accum.out_accum.data_ptr();
         }
         TORCH_CHECK(params.num_splits <= 128, "num_splits > 128 not supported");
     }
+    return accum;
 }
 
-// Tile size should match the advance dispatch and default dispatch
-std::pair<int, int> get_tile_size(int head_size_rounded, int seqlen_k, int seqlen_q) {
-    int block_m = 64, block_n = 64;
-    if (head_size_rounded == 256 || head_size_rounded == 512) {
-        block_m = 64;
-        block_n = 32;
-    } else if (head_size_rounded == 128) {
-        if (seqlen_q <= 16) {
-            block_m = 16;
-            block_n = 16;
-        } else if (seqlen_q <= 32) {
-            block_m = 32;
-            block_n = 32;
-        } else {
-            block_m = 64;
-            block_n = 64;
-        }
-    } else if (head_size_rounded == 64) {
-        if (seqlen_q <= 16) {
-            block_m = 16;
-            block_n = 16;
-        } else {
-            block_m = 64;
-            block_n = 64;
-        }
-    } else {
-        block_m = 64;
-        block_n = 64;
-    }
-    return std::make_pair(block_m, block_n);
-}
-
-void compute_params_numsplits(mcFlashAttn::Flash_fwd_params &params, const int num_splits){
-    // This needs to match with run_mha_fwd_splitkv_dispatch
+void compute_params_numsplits(mcFlashAttn::Flash_fwd_params &params, const int num_splits, bool force_split_kernel){
     auto num_heads = params.h;
-    auto head_size = params.d;
     auto batch_size = params.b;
     auto max_seqlen_k = params.seqlen_k;
     auto max_seqlen_q = params.seqlen_q;
-    auto head_size_rounded = params.d_rounded;
     auto p_dropout = 1.f - params.p_dropout;
     auto dprops = flash::mcGetCurrentDeviceProperties();
-    auto opts = torch::TensorOptions().dtype(torch::kFloat32).device(torch::kCUDA);
 
-    // Technically kBlockM = 64 only for the splitKV kernels, not the standard kernel.:kFloat
-    // In any case we don't expect seqlen_q to be larger than 64 for inference.
-    const auto [block_m, block_n] = get_tile_size(head_size_rounded, max_seqlen_k, max_seqlen_q);
-    const int num_n_blocks = (max_seqlen_k + block_n - 1) / block_n;
-    const int num_m_blocks = (max_seqlen_q + block_m - 1) / block_m;
     params.num_splits = num_splits;
-    at::Tensor softmax_lse_accum;
-    at::Tensor out_accum;
+    params.fwd_kernel_path = FwdKernelPathNormal;
+    params.fwd_meta_valid = false;
+    params.split_meta_valid = false;
+
+    if (!force_split_kernel && num_splits == 1) {
+        auto fwd_meta = select_fwd_meta(params);
+        check_fwd_meta_supported(fwd_meta);
+        set_fwd_meta(params, fwd_meta);
+        return;
+    }
+
+    auto split_meta = select_fwd_split_meta(params);
+    check_fwd_split_meta_supported(split_meta);
+
+    const int num_n_blocks = (max_seqlen_k + split_meta.block_n - 1) / split_meta.block_n;
+    const int num_m_blocks = (max_seqlen_q + split_meta.block_m - 1) / split_meta.block_m;
 
     if (p_dropout == 0.0f) {  // SplitKV is not implemented for dropout
         if (num_splits < 1) {
             const int AP_nums = dprops.multiProcessorCount;
-            int block_nums_per_AP = 2;
-            // Note: adjust block_nums_per_AP decided by smem size usage to get better perfermance
-            if (head_size_rounded == 128) {
-                if (params.seqlen_q <= 16) {
-                    block_nums_per_AP = 8;
-                } else if (params.seqlen_q <= 32) {
-                    block_nums_per_AP = 4;
-                }
-            } else if (head_size_rounded == 64) {
-                if (params.seqlen_q <= 16) {
-                    block_nums_per_AP = 16;
-                } else {
-                    block_nums_per_AP = 4;
-                }
-            }
-            params.num_splits = num_splits_heuristic(batch_size * num_heads * num_m_blocks,  AP_nums * block_nums_per_AP,
+            params.num_splits = num_splits_heuristic(batch_size * num_heads * num_m_blocks,  AP_nums * split_meta.block_num_per_ap,
                                                      num_n_blocks, 128);
         }
+    } else if (num_splits < 1) {
+        params.num_splits = 1;
+    }
+
+    if (force_split_kernel || params.num_splits > 1) {
+        params.fwd_kernel_path = FwdKernelPathSplitKV;
+        set_fwd_split_meta(params, split_meta);
+    } else {
+        auto fwd_meta = select_fwd_meta(params);
+        check_fwd_meta_supported(fwd_meta);
+        set_fwd_meta(params, fwd_meta);
+        params.num_splits = 1;
     }
 
 }

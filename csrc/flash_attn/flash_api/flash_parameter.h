@@ -11,6 +11,11 @@ constexpr int maxValidBlockSizeM = 128;
 
 namespace mcFlashAttn {
 
+enum FwdKernelPath {
+    FwdKernelPathNormal = 0,
+    FwdKernelPathSplitKV = 1,
+};
+
 struct Qkv_params {
     using index_t = int64_t;
 
@@ -152,6 +157,25 @@ struct Flash_fwd_params : public Qkv_params {
     bool is_rotary_interleaved;
 
     int num_splits;  // For split-KV version
+    int fwd_kernel_path;
+    bool fwd_meta_valid;
+    int fwd_block_m;
+    int fwd_block_n;
+    int fwd_nwarps;
+    bool fwd_is_q_in_regs;
+    bool fwd_share_q_k_smem;
+    int fwd_block_type;
+    int fwd_rowblock_parallel;
+    int fwd_headdim_v;
+    int fwd_block_num_per_ap;
+
+    bool split_meta_valid;
+    int split_block_m;
+    int split_block_n;
+    int split_nwarps;
+    bool split_is_q_in_regs;
+    bool split_share_q_k_smem;
+    int split_block_num_per_ap;
 
     void * __restrict__ alibi_slopes_ptr;
     index_t alibi_slopes_batch_stride;
