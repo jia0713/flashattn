@@ -7,17 +7,20 @@ This project automates the generation and mapping of kernel configurations.
 - **Python Scripts**:
   - `generate_fullkernels.py`: Generates fullly expanded instantiation of kernel templates including kernel_traits and launch params.
   - `generate_kernel_traits.py`:
-  This script handles the extraction and generation of specific kernel traits based on the provided configuration (`kernel_traits_config.txt`). It generates a YAML dictionary of kernel traits (`kernel_traits_candidates.yaml`).
+  This script validates the single source `kernel_traits.yaml`, generates an
+  architecture-specific candidate input (`out/kernel_traits_candidates_<arch>.yaml`),
+  and generates the host fwd/split meta registry and dispatch switch.
 
   - `generate_kernels.py`:
-  A general script for generating explicit instantitation of global template functions based on the templates defined in (`kernel_impl_template.py`). It integrates the kernel traits (`kernel_traits_candidates.yaml`) and other properties to define the kernels. The generated templates will be classified by api types by calling (`kernel_class.py`). It creates a mapping of kernel traits (`kernel_traits_map.cpp`) to configurations for efficient retrieval.
+  A general script for generating explicit instantitation of global template functions based on the templates defined in (`kernel_impl_template.py`). It integrates the architecture-specific generated candidate input and other properties to define the kernels. The generated templates will be classified by api types by calling (`kernel_class.py`). It creates a mapping of kernel traits (`kernel_traits_map.cpp`) to configurations for efficient retrieval.
 
   - `kernel_class.py`: Defines kernel configuration classes used by `generate_kernels.py`.
   - `kernel_impl_template.py`: Defines string templates used by `generate_kernels.py`.
 
 - **Configuration Files**:
-  - `kernel_traits_candidates.yaml`: Defines kernel traits and their parameters.
-  - `kernel_traits_config.txt`: Database of kernel traits and configuration.
+  - `kernel_traits.yaml`: The only hand-maintained database of kernel candidates
+    and fwd/fwd_split dispatch policy for every architecture.
+  - `out/kernel_traits_candidates_<arch>.yaml`: Generated generator input.
 
 - **Generated Files**:
   - `kernel_traits_map.cpp`: C++ `unordered_map` that maps `kernel_id` to kernel configurations.
@@ -25,13 +28,13 @@ This project automates the generation and mapping of kernel configurations.
 ## Usage
 
 0. **Update Rule**:
-- To modify kernel traits, you should change following files:
-  - `{arch}_kernel_traints_config.txt`
-  - `kernel_impl_template` (if attempt to remove existing kernel traits)
-    - Remove corresponding kernel_id record in `OLD_FWD_MAP` and `OLD_FWD_SPLIT_MAP`
+  - To modify kernel traits, change only `kernel_traits.yaml`, then regenerate.
+    The generator validates every dispatch rule references an existing candidate.
 
 1. **Prepare Kernel Traits**:
-   - Define traits in `kernel_traits_config.txt`. The format of each api needs to be align with the rules:
+   - Define traits in `kernel_traits.yaml`. Every fwd/fwd_split candidate has a
+     stable `id`; dispatch rules select by that `id` and may constrain dropout,
+     MLA, or maximum query sequence length.
 
   ```
   fwd: hdim_qk, hdim_v, [(block_m, block_n, k_nwarps, Is_Q_in_regs, Share_Q_K_smem)]
@@ -49,7 +52,7 @@ This project automates the generation and mapping of kernel configurations.
 
    Support arch xcore1000 and xcore1500, the default arch is xcore1000
 
-   - Generate kernel_traits_candidates.yaml
+   - Generate architecture-specific kernel candidates and the host registry
 
    ```bash
    python generate_kernel_traits.py --arch arch

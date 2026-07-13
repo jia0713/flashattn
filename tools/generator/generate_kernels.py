@@ -165,17 +165,14 @@ def prepare_dir(update, arch):
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
 
-    yaml_dir = Path('../../flash_attn/tuning')
-    yaml_dir.mkdir(parents=True, exist_ok=True)
-
-    return output_dir, yaml_dir
+    return output_dir
 
 def main() -> None:
     include, exclude, api, update, arch = parse_args()
     # CPP_MAP_PATH = "out/kernel_traits_map.cpp"
-    output_dir, yaml_dir = prepare_dir(update, arch)
+    output_dir = prepare_dir(update, arch)
 
-    data_file = yaml_dir / "kernel_traits_candidates.yaml"
+    data_file = Path(f"out/kernel_traits_candidates_{arch}.yaml")
     kernels = get_all_kernels(data_file, update, arch, include, exclude)
     if (update):
         kernel_paths = []

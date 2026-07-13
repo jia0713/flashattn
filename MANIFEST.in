@@ -9,5 +9,3 @@ recursive-include flash_attn *.h
 recursive-include flash_attn *.cuh
 recursive-include flash_attn *.cpp
 recursive-include flash_attn *.hpp
-
-include tools/generator/out/kernel_traits_candidates.yaml

@@ -344,7 +344,7 @@ def match_kernel(kernel, option):
 
 def get_all_kernels(include=None, exclude=None, arch='xcore1000', bool_list=None) -> List[Kernel]:
     #kernels = []
-    candidates_path = '../../flash_attn/tuning/kernel_traits_candidates.yaml'
+    candidates_path = f'out/kernel_traits_candidates_{arch}.yaml'
     kernels = {"fwd": [], "bwd": [], "fwd_split": []}
     unique_configs = set()
     with open(candidates_path, 'r') as file:

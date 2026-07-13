@@ -37,9 +37,6 @@ else
     arch_list+=("xcore1500" "xcore1000")
 fi
 
-if [ -e "flash_attn/tuning/kernel_traits_candidates.yaml" ]; then
-    rm flash_attn/tuning/kernel_traits_candidates.yaml
-fi
 cd tools/generator
 rm -rf out
 echo $4

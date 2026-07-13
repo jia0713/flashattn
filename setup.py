@@ -336,7 +336,6 @@ setup(
     ),
     package_data = {
         "flash_attn" : [
-            "tuning/kernel_traits_candidates.yaml",
             "tuning/tuner_config.yaml"
         ]
     },

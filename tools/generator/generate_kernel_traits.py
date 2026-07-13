@@ -1,111 +1,204 @@
+#!/usr/bin/env python3
+"""Generate kernel instantiation candidates and host fwd trait dispatch.
+
+`kernel_traits.yaml` is the only hand-maintained trait database.  Generated
+outputs are deliberately architecture-specific so generating one target cannot
+overwrite another target's candidate set.
+"""
 
 import argparse
-import re
-import ast
+from pathlib import Path
+
 import yaml
-import os
-
-# Define the mapping for the configuration fields based on category names
-field_mappings = {}
-# Function to preprocess the list of configurations and fix non-standard syntax
-def preprocess_config(config_str):
-    # Find patterns like `32x64` and replace them with strings `'32x64'`
-    return re.sub(r'(\d+x\d+)', r'"\1"', config_str)
-# Function to parse the base config and generate kernel configs
-def parse_base_config(file_path):
-    kernel_configs = {}
-    current_category = None
-    with open(file_path, 'r') as file:
-        for line in file:
-            # Match a category (fwd, bwd, fwd_split)
-            pattern = r'(\w+):\s*(\w+),\s*(\w+),\s*\[\(([\w\s,]+)\)\]'
-            match = re.match(pattern, line.strip())
-            if match:
-                current_category = match.group(1)
-                field_mappings[current_category] = [item.strip() for item in match.group(4).split(',')]
-                kernel_configs[current_category] = []
-                continue
-            # Parse lines that define configurations under a category
-            if current_category and line.strip():
-                # Split the line into three parts: hdim_qk, hdim_v, and the list of tuples
-                match = re.match(r'(\d+|\w+),\s*(\d+|\w+),\s*\[(.+)\](?:,\s*\((.+)\))?', line.strip())
-                # match = re.match(r'(\d+\w+),\s*(\d+\w+),\s*\[(.+)\], \((.*?)\)', line.strip())
-                if match:
-                    hdim_qk = int(match.group(1))
-                    hdim_v = match.group(2)
-                    configs_list_str = match.group(3)
-                    # Preprocess the string to handle non-standard syntax
-                    configs_list_str = preprocess_config(configs_list_str)
-                    # Convert the string of list of tuples into a Python object
-                    configs_list = ast.literal_eval(f'[{configs_list_str}]')
-                    # Rename the config fields based on the category's mapping
-                    field_names = field_mappings.get(current_category, [])
-                    for dtype in ['bfloat16','float16']:
-                        for conf in configs_list:
-                            renamed_config = dict(zip(field_names, conf))
-                            if hdim_v == 'k64':
-                                for v in range(64, 257, 64):
-                                    base_config = {
-                                        'hdim_qk': hdim_qk,
-                                        'hdim_v': v,
-                                        'dtype': dtype,
-                                        **renamed_config
-                                    }
-                                    kernel_configs[current_category].append({**base_config})
-                            else:
-                                base_config = {
-                                        'hdim_qk': hdim_qk,
-                                        'hdim_v': int(hdim_v),
-                                        'dtype': dtype,
-                                        **renamed_config
-                                }
-                                kernel_configs[current_category].append({**base_config})
-    return kernel_configs
-
-# Function to write the kernel configs to a Yaml file
-def write_kernel_configs_to_file(kernel_configs, output_file):
-    formatted_configs = {}
-    # Create the desired format for the YAML output
-    for category, configs in kernel_configs.items():
-        formatted_configs[category] = []
-        for config in configs:
-            # Specify the keys that should retain both key and value in the combined key
-            selected_keys = ['hdim_qk', 'hdim_v', 'block_m', 'block_n']
-            # Construct the combined key
-            combined_key_parts = [category]
-            # Add selected keys with both key and value in the combined key
-            for k in selected_keys:
-                if k in config:
-                    combined_key_parts.append(f"{k.replace('_','')}_{config[k]}")
-            # Add the values of other keys (without their names)
-            for k, v in config.items():
-                if k not in selected_keys:
-                    combined_key_parts.append(str(v))  # Only append the value
-            # Join all parts to form the combined key
-            combined_key = "_".join(combined_key_parts)
-            config['kernel_id']= combined_key
-            formatted_configs[category].append(config)
-    # Write the formatted configuration as YAML
-    with open(output_file, 'w') as f:
-        yaml.dump(formatted_configs, f, default_flow_style=False)
 
 
-parser = argparse.ArgumentParser(description="Generate kernel traits candidate yaml.")
-parser.add_argument("-a", "--arch", help="device arch",  default="xcore1000")
-args = parser.parse_args()
-# File path to the base config
-file_path = 'xcore1000_kernel_traits_config.txt'
-if args.arch == "xcore1000":
-    file_path = 'xcore1000_kernel_traits_config.txt'
-elif args.arch == "xcore1500":
-    file_path = 'xcore1500_kernel_traits_config.txt'
-else:
-    assert False, f"the arch {args.arch} is not support"
+ROOT = Path(__file__).resolve().parents[2]
+SOURCE = Path(__file__).with_name("kernel_traits.yaml")
+OUT_DIR = Path(__file__).with_name("out")
+REGISTRY = ROOT / "csrc/flash_attn/flash_dispatch/generated/fwd_kernel_traits_registry.h"
+FWD_REQUIRED = {
+    "hdim_qk", "hdim_v", "block_m", "block_n", "k_nwarps",
+    "Is_Q_in_regs", "Share_Q_K_smem", "block_num_per_ap",
+}
 
-output_file = '../../flash_attn/tuning/kernel_traits_candidates.yaml'
-if not os.path.exists('out'):
-    os.makedirs('out')
-# Generate kernel configs
-kernel_configs = parse_base_config(file_path)
-# Write the kernel configs to kernel_configs.py
-write_kernel_configs_to_file(kernel_configs, output_file)
+
+def load_database():
+    with SOURCE.open() as source:
+        database = yaml.safe_load(source)
+    if database.get("version") != 1:
+        raise ValueError("unsupported kernel traits schema version")
+    return database["architectures"]
+
+
+def validate(architectures):
+    for arch, operations in architectures.items():
+        for operation, section in operations.items():
+            candidates = section.get("candidates", [])
+            ids = set()
+            for candidate in candidates:
+                if operation in ("fwd", "fwd_split"):
+                    missing = FWD_REQUIRED - candidate.keys()
+                    if missing:
+                        raise ValueError(f"{arch}/{operation}/{candidate.get('id')}: missing {sorted(missing)}")
+                    if candidate["id"] in ids:
+                        raise ValueError(f"duplicate candidate id: {arch}/{operation}/{candidate['id']}")
+                    ids.add(candidate["id"])
+            for rule in section.get("dispatch", []):
+                if rule["candidate"] not in ids:
+                    raise ValueError(f"{arch}/{operation}: dispatch references unknown candidate {rule['candidate']}")
+
+
+def kernel_candidates(architectures, arch):
+    """Keep the legacy generator input shape, excluding host-only metadata."""
+    candidates = {}
+    for operation, section in architectures[arch].items():
+        configs = []
+        for candidate in section.get("candidates", []):
+            config = dict(candidate)
+            config.pop("id", None)
+            config.pop("block_num_per_ap", None)
+            configs.append(config)
+        candidates[operation] = configs
+    return candidates
+
+
+def cpp_bool(value):
+    return "true" if value else "false"
+
+
+def make_meta(arch, operation, candidate):
+    common = (
+        f"Arch::{arch}, {candidate['hdim_qk']}, "
+        f"{candidate['block_m']}, {candidate['block_n']}, {candidate['k_nwarps']}, "
+        f"{cpp_bool(candidate['Is_Q_in_regs'])}, {cpp_bool(candidate['Share_Q_K_smem'])}"
+    )
+    if operation == "fwd":
+        return (
+            f"make_fwd_meta(Arch::{arch}, {candidate['hdim_qk']}, {candidate['hdim_v']}, "
+            f"{candidate['block_m']}, {candidate['block_n']}, {candidate['k_nwarps']}, "
+            f"{cpp_bool(candidate['Is_Q_in_regs'])}, {cpp_bool(candidate['Share_Q_K_smem'])}, "
+            f"5, 0, {candidate['block_num_per_ap']})"
+        )
+    return f"make_fwd_split_meta({common}, {candidate['block_num_per_ap']})"
+
+
+def rule_condition(arch, operation, candidate, rule):
+    terms = [f"arch == Arch::{arch}", f"headdim == {candidate['hdim_qk']}"]
+    if "dropout" in rule:
+        terms.append("is_dropout" if rule["dropout"] else "!is_dropout")
+    if "mla" in rule:
+        terms.append("is_mla" if rule["mla"] else "!is_mla")
+    if "seqlen_q_max" in rule:
+        terms.append(f"params.seqlen_q <= {rule['seqlen_q_max']}")
+    return " && ".join(terms)
+
+
+def emit_selector(architectures, operation):
+    return_type = "FwdKernelMeta" if operation == "fwd" else "FwdSplitKernelMeta"
+    name = "select_fwd_meta" if operation == "fwd" else "select_fwd_split_meta"
+    effective = "fwd_effective_headdim" if operation == "fwd" else "fwd_split_effective_headdim"
+    lines = [f"inline {return_type} {name}(const Flash_fwd_params &params) {{",
+             "    const int arch = params.arch;",
+             f"    const int headdim = {effective}(params.d);"]
+    if operation == "fwd":
+        lines.extend([
+            "    const bool is_dropout = params.p_dropout < 1.0f;",
+            "    const bool is_mla = headdim == 192 && params.d_value_rounded == 128;",
+        ])
+    for arch, operations in architectures.items():
+        section = operations[operation]
+        candidates = {candidate["id"]: candidate for candidate in section["candidates"]}
+        for rule in section.get("dispatch", []):
+            candidate = candidates[rule["candidate"]]
+            condition = rule_condition(arch, operation, candidate, rule)
+            lines.append(f"    if ({condition}) {{ return {make_meta(arch, operation, candidate)}; }}")
+    lines.extend(["    return {};", "}", ""])
+    return lines
+
+
+def emit_switch_macro(architectures, operation):
+    macro = "FWD_META_SWITCH" if operation == "fwd" else "FWD_SPLIT_META_SWITCH"
+    args = (
+        "META, kArch, kHeadDim, kHeadDimV, kBlockM, kBlockN, kNWarps, Is_Q_in_regs, Share_Q_K_smem, ..."
+        if operation == "fwd" else
+        "META, kArch, kHeadDim, kBlockM, kBlockN, kNWarps, Is_Q_in_regs, Share_Q_K_smem, ..."
+    )
+    check = "check_fwd_meta_supported" if operation == "fwd" else "check_fwd_split_meta_supported"
+    unique = []
+    seen = set()
+    for arch, operations in architectures.items():
+        for candidate in operations[operation]["candidates"]:
+            key = (arch, candidate["hdim_qk"], candidate["hdim_v"], candidate["block_m"], candidate["block_n"],
+                   candidate["k_nwarps"], candidate["Is_Q_in_regs"], candidate["Share_Q_K_smem"])
+            if key not in seen:
+                seen.add(key)
+                unique.append((arch, candidate))
+
+    lines = [f"#define {macro}({args}) \\",
+             "    [&] { \\",
+             "        const auto &meta__ = (META); \\",
+             f"        mcFlashAttn::{check}(meta__); \\"]
+    for arch, candidate in unique:
+        gate = f"(kArch) == Arch::{arch} && (kHeadDim) == {candidate['hdim_qk']}"
+        if operation == "fwd":
+            gate += f" && (kHeadDimV) == {candidate['hdim_v']}"
+        predicate = (
+            f"meta__.block_m == {candidate['block_m']} && meta__.block_n == {candidate['block_n']} && "
+            f"meta__.nwarps == {candidate['k_nwarps']} && "
+            f"meta__.is_q_in_regs == {cpp_bool(candidate['Is_Q_in_regs'])} && "
+            f"meta__.share_q_k_smem == {cpp_bool(candidate['Share_Q_K_smem'])}"
+        )
+        lines.extend([
+            f"        if constexpr ({gate}) {{ \\",
+            f"            if ({predicate}) {{ \\",
+            f"                constexpr static int kBlockM = {candidate['block_m']}; \\",
+            f"                constexpr static int kBlockN = {candidate['block_n']}; \\",
+            f"                constexpr static int kNWarps = {candidate['k_nwarps']}; \\",
+            f"                constexpr static bool Is_Q_in_regs = {cpp_bool(candidate['Is_Q_in_regs'])}; \\",
+            f"                constexpr static bool Share_Q_K_smem = {cpp_bool(candidate['Share_Q_K_smem'])}; \\",
+            "                return __VA_ARGS__(); \\",
+            "            } \\",
+            "        } \\",
+        ])
+    lines.extend([
+        "        throw std::invalid_argument(\"Unsupported generated fwd kernel tuple\"); \\",
+        "    }()",
+        "",
+    ])
+    return lines
+
+
+def write_registry(architectures):
+    lines = [
+        "// Generated by tools/generator/generate_kernel_traits.py. Do not edit.",
+        "// Source: tools/generator/kernel_traits.yaml",
+        "",
+    ]
+    lines.extend(emit_selector(architectures, "fwd"))
+    lines.extend(emit_selector(architectures, "fwd_split"))
+    lines.extend(emit_switch_macro(architectures, "fwd"))
+    lines.extend(emit_switch_macro(architectures, "fwd_split"))
+    REGISTRY.parent.mkdir(parents=True, exist_ok=True)
+    REGISTRY.write_text("\n".join(lines))
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Generate kernel trait candidates and host fwd dispatch registry.")
+    parser.add_argument("-a", "--arch", choices=("xcore1000", "xcore1500"), help="generate candidates for one architecture")
+    args = parser.parse_args()
+
+    architectures = load_database()
+    validate(architectures)
+    OUT_DIR.mkdir(exist_ok=True)
+    if args.arch:
+        output = OUT_DIR / f"kernel_traits_candidates_{args.arch}.yaml"
+        output.write_text(yaml.safe_dump(kernel_candidates(architectures, args.arch), sort_keys=False))
+    else:
+        for arch in architectures:
+            output = OUT_DIR / f"kernel_traits_candidates_{arch}.yaml"
+            output.write_text(yaml.safe_dump(kernel_candidates(architectures, arch), sort_keys=False))
+    write_registry(architectures)
+
+
+if __name__ == "__main__":
+    main()

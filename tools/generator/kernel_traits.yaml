@@ -1,0 +1,137 @@
+version: 1
+
+# The only hand-maintained source of kernel trait candidates and default
+# host-dispatch policy. The generator validates every policy reference and
+# derives both kernel instantiation inputs and the host dispatch registry.
+architectures:
+  xcore1000:
+    fwd:
+      candidates:
+        - { id: fwd_32_m128n128_w4_tt, hdim_qk: 32, hdim_v: 32, block_m: 128, block_n: 128, k_nwarps: 4, Is_Q_in_regs: true, Share_Q_K_smem: true, block_num_per_ap: 2 }
+        - { id: fwd_32_m128n64_w4_tt, hdim_qk: 32, hdim_v: 32, block_m: 128, block_n: 64, k_nwarps: 4, Is_Q_in_regs: true, Share_Q_K_smem: true, block_num_per_ap: 2 }
+        - { id: fwd_64_m16n16_w1_tt, hdim_qk: 64, hdim_v: 64, block_m: 16, block_n: 16, k_nwarps: 1, Is_Q_in_regs: true, Share_Q_K_smem: true, block_num_per_ap: 16 }
+        - { id: fwd_64_m32n32_w2_tt, hdim_qk: 64, hdim_v: 64, block_m: 32, block_n: 32, k_nwarps: 2, Is_Q_in_regs: true, Share_Q_K_smem: true, block_num_per_ap: 4 }
+        - { id: fwd_64_m64n64_w4_tt, hdim_qk: 64, hdim_v: 64, block_m: 64, block_n: 64, k_nwarps: 4, Is_Q_in_regs: true, Share_Q_K_smem: true, block_num_per_ap: 2 }
+        - { id: fwd_64_m128n64_w4_tt, hdim_qk: 64, hdim_v: 64, block_m: 128, block_n: 64, k_nwarps: 4, Is_Q_in_regs: true, Share_Q_K_smem: true, block_num_per_ap: 2 }
+        - { id: fwd_64_m128n128_w4_tt, hdim_qk: 64, hdim_v: 64, block_m: 128, block_n: 128, k_nwarps: 4, Is_Q_in_regs: true, Share_Q_K_smem: true, block_num_per_ap: 2 }
+        - { id: fwd_96_m64n64_w4_tt, hdim_qk: 96, hdim_v: 96, block_m: 64, block_n: 64, k_nwarps: 4, Is_Q_in_regs: true, Share_Q_K_smem: true, block_num_per_ap: 2 }
+        - { id: fwd_96_m128n64_w4_tt, hdim_qk: 96, hdim_v: 96, block_m: 128, block_n: 64, k_nwarps: 4, Is_Q_in_regs: true, Share_Q_K_smem: true, block_num_per_ap: 2 }
+        - { id: fwd_128_m64n64_w4_tt, hdim_qk: 128, hdim_v: 128, block_m: 64, block_n: 64, k_nwarps: 4, Is_Q_in_regs: true, Share_Q_K_smem: true, block_num_per_ap: 2 }
+        - { id: fwd_128_m128n64_w4_tt, hdim_qk: 128, hdim_v: 128, block_m: 128, block_n: 64, k_nwarps: 4, Is_Q_in_regs: true, Share_Q_K_smem: true, block_num_per_ap: 2 }
+        - { id: fwd_128_m128n32_w4_tt, hdim_qk: 128, hdim_v: 128, block_m: 128, block_n: 32, k_nwarps: 4, Is_Q_in_regs: true, Share_Q_K_smem: true, block_num_per_ap: 2 }
+        - { id: fwd_128_m64n32_w4_tt, hdim_qk: 128, hdim_v: 128, block_m: 64, block_n: 32, k_nwarps: 4, Is_Q_in_regs: true, Share_Q_K_smem: true, block_num_per_ap: 2 }
+        - { id: fwd_160_m128n64_w4_tt, hdim_qk: 160, hdim_v: 160, block_m: 128, block_n: 64, k_nwarps: 4, Is_Q_in_regs: true, Share_Q_K_smem: true, block_num_per_ap: 2 }
+        - { id: fwd_160_m64n32_w4_tt, hdim_qk: 160, hdim_v: 160, block_m: 64, block_n: 32, k_nwarps: 4, Is_Q_in_regs: true, Share_Q_K_smem: true, block_num_per_ap: 2 }
+        - { id: fwd_160_m64n64_w4_tt, hdim_qk: 160, hdim_v: 160, block_m: 64, block_n: 64, k_nwarps: 4, Is_Q_in_regs: true, Share_Q_K_smem: true, block_num_per_ap: 2 }
+        - { id: fwd_192v128_m128n64_w8_tt, hdim_qk: 192, hdim_v: 128, block_m: 128, block_n: 64, k_nwarps: 8, Is_Q_in_regs: true, Share_Q_K_smem: true, block_num_per_ap: 2 }
+        - { id: fwd_192v192_m64n64_w4_tt, hdim_qk: 192, hdim_v: 192, block_m: 64, block_n: 64, k_nwarps: 4, Is_Q_in_regs: true, Share_Q_K_smem: true, block_num_per_ap: 2 }
+        - { id: fwd_256_m64n64_w4_tt, hdim_qk: 256, hdim_v: 256, block_m: 64, block_n: 64, k_nwarps: 4, Is_Q_in_regs: true, Share_Q_K_smem: true, block_num_per_ap: 2 }
+        - { id: fwd_256_m64n32_w4_tt, hdim_qk: 256, hdim_v: 256, block_m: 64, block_n: 32, k_nwarps: 4, Is_Q_in_regs: true, Share_Q_K_smem: true, block_num_per_ap: 2 }
+        - { id: fwd_512_m64n32_w8_tt, hdim_qk: 512, hdim_v: 512, block_m: 64, block_n: 32, k_nwarps: 8, Is_Q_in_regs: true, Share_Q_K_smem: true, block_num_per_ap: 2 }
+      dispatch:
+        - { candidate: fwd_32_m128n128_w4_tt }
+        - { candidate: fwd_64_m64n64_w4_tt }
+        - { candidate: fwd_96_m128n64_w4_tt }
+        - { candidate: fwd_128_m64n64_w4_tt }
+        - { candidate: fwd_160_m64n32_w4_tt }
+        - { candidate: fwd_192v128_m128n64_w8_tt, mla: true }
+        - { candidate: fwd_192v192_m64n64_w4_tt, mla: false }
+        - { candidate: fwd_256_m64n64_w4_tt, dropout: true }
+        - { candidate: fwd_256_m64n32_w4_tt, dropout: false }
+        - { candidate: fwd_512_m64n32_w8_tt }
+    fwd_split:
+      candidates:
+        - { id: split_32_m64n64_w4_tt, hdim_qk: 32, hdim_v: 32, block_m: 64, block_n: 64, k_nwarps: 4, Is_Q_in_regs: true, Share_Q_K_smem: true, block_num_per_ap: 2 }
+        - { id: split_64_m64n64_w4_tt, hdim_qk: 64, hdim_v: 64, block_m: 64, block_n: 64, k_nwarps: 4, Is_Q_in_regs: true, Share_Q_K_smem: true, block_num_per_ap: 2 }
+        - { id: split_64_m16n16_w1_tt, hdim_qk: 64, hdim_v: 64, block_m: 16, block_n: 16, k_nwarps: 1, Is_Q_in_regs: true, Share_Q_K_smem: true, block_num_per_ap: 16 }
+        - { id: split_96_m64n64_w4_tt, hdim_qk: 96, hdim_v: 96, block_m: 64, block_n: 64, k_nwarps: 4, Is_Q_in_regs: true, Share_Q_K_smem: true, block_num_per_ap: 2 }
+        - { id: split_128_m64n32_w4_tt, hdim_qk: 128, hdim_v: 128, block_m: 64, block_n: 32, k_nwarps: 4, Is_Q_in_regs: true, Share_Q_K_smem: true, block_num_per_ap: 2 }
+        - { id: split_128_m64n64_w4_tt, hdim_qk: 128, hdim_v: 128, block_m: 64, block_n: 64, k_nwarps: 4, Is_Q_in_regs: true, Share_Q_K_smem: true, block_num_per_ap: 2 }
+        - { id: split_128_m128n64_w4_tt, hdim_qk: 128, hdim_v: 128, block_m: 128, block_n: 64, k_nwarps: 4, Is_Q_in_regs: true, Share_Q_K_smem: true, block_num_per_ap: 2 }
+        - { id: split_128_m32n32_w2_tt, hdim_qk: 128, hdim_v: 128, block_m: 32, block_n: 32, k_nwarps: 2, Is_Q_in_regs: true, Share_Q_K_smem: true, block_num_per_ap: 4 }
+        - { id: split_128_m16n16_w1_tt, hdim_qk: 128, hdim_v: 128, block_m: 16, block_n: 16, k_nwarps: 1, Is_Q_in_regs: true, Share_Q_K_smem: true, block_num_per_ap: 8 }
+        - { id: split_160_m64n64_w4_tt, hdim_qk: 160, hdim_v: 160, block_m: 64, block_n: 64, k_nwarps: 4, Is_Q_in_regs: true, Share_Q_K_smem: true, block_num_per_ap: 2 }
+        - { id: split_192_m64n64_w4_tt, hdim_qk: 192, hdim_v: 192, block_m: 64, block_n: 64, k_nwarps: 4, Is_Q_in_regs: true, Share_Q_K_smem: true, block_num_per_ap: 2 }
+        - { id: split_256_m64n32_w4_tt, hdim_qk: 256, hdim_v: 256, block_m: 64, block_n: 32, k_nwarps: 4, Is_Q_in_regs: true, Share_Q_K_smem: true, block_num_per_ap: 2 }
+        - { id: split_256_m64n64_w4_tt, hdim_qk: 256, hdim_v: 256, block_m: 64, block_n: 64, k_nwarps: 4, Is_Q_in_regs: true, Share_Q_K_smem: true, block_num_per_ap: 2 }
+        - { id: split_512_m32n32_w2_tt, hdim_qk: 512, hdim_v: 512, block_m: 32, block_n: 32, k_nwarps: 2, Is_Q_in_regs: true, Share_Q_K_smem: true, block_num_per_ap: 2 }
+      dispatch:
+        - { candidate: split_32_m64n64_w4_tt }
+        - { candidate: split_64_m16n16_w1_tt, seqlen_q_max: 16 }
+        - { candidate: split_64_m64n64_w4_tt }
+        - { candidate: split_96_m64n64_w4_tt }
+        - { candidate: split_128_m16n16_w1_tt, seqlen_q_max: 16 }
+        - { candidate: split_128_m32n32_w2_tt, seqlen_q_max: 32 }
+        - { candidate: split_128_m64n64_w4_tt }
+        - { candidate: split_160_m64n64_w4_tt }
+        - { candidate: split_192_m64n64_w4_tt }
+        - { candidate: split_256_m64n32_w4_tt }
+        - { candidate: split_512_m32n32_w2_tt }
+    bwd:
+      candidates:
+        - { hdim_qk: 32, hdim_v: 32, block_m: 32, block_n: 128, k_nwarps: 4, atom_layout_msdp: 2, atom_layout_ndkv: 2, atom_layout_mdq: 2, is_v_in_regs: true, is_k_in_regs: true, no_double_buffer: true }
+        - { hdim_qk: 64, hdim_v: 64, block_m: 64, block_n: 64, k_nwarps: 4, atom_layout_msdp: 4, atom_layout_ndkv: 1, atom_layout_mdq: 4, is_v_in_regs: true, is_k_in_regs: true, no_double_buffer: true }
+        - { hdim_qk: 64, hdim_v: 64, block_m: 16, block_n: 128, k_nwarps: 4, atom_layout_msdp: 1, atom_layout_ndkv: 1, atom_layout_mdq: 1, is_v_in_regs: true, is_k_in_regs: true, no_double_buffer: true }
+        - { hdim_qk: 96, hdim_v: 96, block_m: 16, block_n: 64, k_nwarps: 2, atom_layout_msdp: 1, atom_layout_ndkv: 1, atom_layout_mdq: 1, is_v_in_regs: true, is_k_in_regs: true, no_double_buffer: true }
+        - { hdim_qk: 96, hdim_v: 96, block_m: 32, block_n: 64, k_nwarps: 4, atom_layout_msdp: 2, atom_layout_ndkv: 2, atom_layout_mdq: 2, is_v_in_regs: true, is_k_in_regs: true, no_double_buffer: true }
+        - { hdim_qk: 128, hdim_v: 128, block_m: 32, block_n: 64, k_nwarps: 4, atom_layout_msdp: 2, atom_layout_ndkv: 2, atom_layout_mdq: 2, is_v_in_regs: true, is_k_in_regs: false, no_double_buffer: true }
+        - { hdim_qk: 128, hdim_v: 128, block_m: 32, block_n: 128, k_nwarps: 8, atom_layout_msdp: 2, atom_layout_ndkv: 4, atom_layout_mdq: 2, is_v_in_regs: true, is_k_in_regs: true, no_double_buffer: true }
+        - { hdim_qk: 160, hdim_v: 160, block_m: 32, block_n: 32, k_nwarps: 2, atom_layout_msdp: 2, atom_layout_ndkv: 2, atom_layout_mdq: 2, is_v_in_regs: true, is_k_in_regs: true, no_double_buffer: true }
+        - { hdim_qk: 192, hdim_v: 128, block_m: 32, block_n: 32, k_nwarps: 4, atom_layout_msdp: 2, atom_layout_ndkv: 1, atom_layout_mdq: 2, is_v_in_regs: true, is_k_in_regs: true, no_double_buffer: true }
+        - { hdim_qk: 192, hdim_v: 128, block_m: 32, block_n: 64, k_nwarps: 8, atom_layout_msdp: 2, atom_layout_ndkv: 2, atom_layout_mdq: 2, is_v_in_regs: true, is_k_in_regs: true, no_double_buffer: true }
+        - { hdim_qk: 192, hdim_v: 192, block_m: 32, block_n: 32, k_nwarps: 4, atom_layout_msdp: 2, atom_layout_ndkv: 1, atom_layout_mdq: 2, is_v_in_regs: true, is_k_in_regs: true, no_double_buffer: true }
+        - { hdim_qk: 192, hdim_v: 192, block_m: 32, block_n: 64, k_nwarps: 8, atom_layout_msdp: 2, atom_layout_ndkv: 2, atom_layout_mdq: 2, is_v_in_regs: true, is_k_in_regs: true, no_double_buffer: true }
+        - { hdim_qk: 256, hdim_v: 256, block_m: 32, block_n: 32, k_nwarps: 8, atom_layout_msdp: 2, atom_layout_ndkv: 2, atom_layout_mdq: 2, is_v_in_regs: true, is_k_in_regs: true, no_double_buffer: true }
+
+  xcore1500:
+    fwd:
+      candidates:
+        - { id: fwd_32_m128n64_w4_tt, hdim_qk: 32, hdim_v: 32, block_m: 128, block_n: 64, k_nwarps: 4, Is_Q_in_regs: true, Share_Q_K_smem: true, block_num_per_ap: 2 }
+        - { id: fwd_32_m128n128_w4_tt, hdim_qk: 32, hdim_v: 32, block_m: 128, block_n: 128, k_nwarps: 4, Is_Q_in_regs: true, Share_Q_K_smem: true, block_num_per_ap: 2 }
+        - { id: fwd_64_m128n64_w4_ff, hdim_qk: 64, hdim_v: 64, block_m: 128, block_n: 64, k_nwarps: 4, Is_Q_in_regs: false, Share_Q_K_smem: false, block_num_per_ap: 2 }
+        - { id: fwd_96_m128n64_w4_tt, hdim_qk: 96, hdim_v: 96, block_m: 128, block_n: 64, k_nwarps: 4, Is_Q_in_regs: true, Share_Q_K_smem: true, block_num_per_ap: 2 }
+        - { id: fwd_128_m128n64_w4_ff, hdim_qk: 128, hdim_v: 128, block_m: 128, block_n: 64, k_nwarps: 4, Is_Q_in_regs: false, Share_Q_K_smem: false, block_num_per_ap: 2 }
+        - { id: fwd_128_m128n64_w4_tt, hdim_qk: 128, hdim_v: 128, block_m: 128, block_n: 64, k_nwarps: 4, Is_Q_in_regs: true, Share_Q_K_smem: true, block_num_per_ap: 2 }
+        - { id: fwd_160_m128n64_w4_tt, hdim_qk: 160, hdim_v: 160, block_m: 128, block_n: 64, k_nwarps: 4, Is_Q_in_regs: true, Share_Q_K_smem: true, block_num_per_ap: 2 }
+        - { id: fwd_192v128_m128n64_w8_tt, hdim_qk: 192, hdim_v: 128, block_m: 128, block_n: 64, k_nwarps: 8, Is_Q_in_regs: true, Share_Q_K_smem: true, block_num_per_ap: 2 }
+        - { id: fwd_192v192_m128n64_w4_ff, hdim_qk: 192, hdim_v: 192, block_m: 128, block_n: 64, k_nwarps: 4, Is_Q_in_regs: false, Share_Q_K_smem: false, block_num_per_ap: 2 }
+        - { id: fwd_256_m128n64_w4_ff, hdim_qk: 256, hdim_v: 256, block_m: 128, block_n: 64, k_nwarps: 4, Is_Q_in_regs: false, Share_Q_K_smem: false, block_num_per_ap: 2 }
+      dispatch:
+        - { candidate: fwd_32_m128n64_w4_tt, dropout: true }
+        - { candidate: fwd_32_m128n128_w4_tt, dropout: false }
+        - { candidate: fwd_64_m128n64_w4_ff }
+        - { candidate: fwd_96_m128n64_w4_tt }
+        - { candidate: fwd_128_m128n64_w4_tt }
+        - { candidate: fwd_160_m128n64_w4_tt }
+        - { candidate: fwd_192v128_m128n64_w8_tt, mla: true }
+        - { candidate: fwd_192v192_m128n64_w4_ff, mla: false }
+        - { candidate: fwd_256_m128n64_w4_ff }
+    fwd_split:
+      candidates:
+        - { id: split_32_m64n64_w4_tt, hdim_qk: 32, hdim_v: 32, block_m: 64, block_n: 64, k_nwarps: 4, Is_Q_in_regs: true, Share_Q_K_smem: true, block_num_per_ap: 2 }
+        - { id: split_64_m128n64_w4_ff, hdim_qk: 64, hdim_v: 64, block_m: 128, block_n: 64, k_nwarps: 4, Is_Q_in_regs: false, Share_Q_K_smem: false, block_num_per_ap: 2 }
+        - { id: split_96_m64n64_w4_tt, hdim_qk: 96, hdim_v: 96, block_m: 64, block_n: 64, k_nwarps: 4, Is_Q_in_regs: true, Share_Q_K_smem: true, block_num_per_ap: 2 }
+        - { id: split_128_m128n64_w4_tt, hdim_qk: 128, hdim_v: 128, block_m: 128, block_n: 64, k_nwarps: 4, Is_Q_in_regs: true, Share_Q_K_smem: true, block_num_per_ap: 2 }
+        - { id: split_128_m16n32_w1_tt, hdim_qk: 128, hdim_v: 128, block_m: 16, block_n: 32, k_nwarps: 1, Is_Q_in_regs: true, Share_Q_K_smem: true, block_num_per_ap: 8 }
+        - { id: split_160_m64n64_w4_tt, hdim_qk: 160, hdim_v: 160, block_m: 64, block_n: 64, k_nwarps: 4, Is_Q_in_regs: true, Share_Q_K_smem: true, block_num_per_ap: 2 }
+        - { id: split_192_m128n64_w4_ff, hdim_qk: 192, hdim_v: 192, block_m: 128, block_n: 64, k_nwarps: 4, Is_Q_in_regs: false, Share_Q_K_smem: false, block_num_per_ap: 2 }
+        - { id: split_256_m128n64_w4_ff, hdim_qk: 256, hdim_v: 256, block_m: 128, block_n: 64, k_nwarps: 4, Is_Q_in_regs: false, Share_Q_K_smem: false, block_num_per_ap: 2 }
+      dispatch:
+        - { candidate: split_32_m64n64_w4_tt }
+        - { candidate: split_64_m128n64_w4_ff }
+        - { candidate: split_96_m64n64_w4_tt }
+        - { candidate: split_128_m16n32_w1_tt, seqlen_q_max: 32 }
+        - { candidate: split_128_m128n64_w4_tt }
+        - { candidate: split_160_m64n64_w4_tt }
+        - { candidate: split_192_m128n64_w4_ff }
+        - { candidate: split_256_m128n64_w4_ff }
+    bwd:
+      candidates:
+        - { hdim_qk: 32, hdim_v: 32, block_m: 32, block_n: 128, k_nwarps: 4, atom_layout_msdp: 2, atom_layout_ndkv: 2, atom_layout_mdq: 2, is_v_in_regs: true, is_k_in_regs: true, no_double_buffer: true }
+        - { hdim_qk: 64, hdim_v: 64, block_m: 64, block_n: 64, k_nwarps: 4, atom_layout_msdp: 4, atom_layout_ndkv: 1, atom_layout_mdq: 4, is_v_in_regs: true, is_k_in_regs: true, no_double_buffer: true }
+        - { hdim_qk: 96, hdim_v: 96, block_m: 32, block_n: 64, k_nwarps: 4, atom_layout_msdp: 2, atom_layout_ndkv: 2, atom_layout_mdq: 2, is_v_in_regs: true, is_k_in_regs: true, no_double_buffer: true }
+        - { hdim_qk: 128, hdim_v: 128, block_m: 32, block_n: 64, k_nwarps: 4, atom_layout_msdp: 2, atom_layout_ndkv: 2, atom_layout_mdq: 1, is_v_in_regs: true, is_k_in_regs: true, no_double_buffer: false }
+        - { hdim_qk: 160, hdim_v: 160, block_m: 32, block_n: 32, k_nwarps: 2, atom_layout_msdp: 2, atom_layout_ndkv: 2, atom_layout_mdq: 2, is_v_in_regs: true, is_k_in_regs: true, no_double_buffer: true }
+        - { hdim_qk: 192, hdim_v: 128, block_m: 32, block_n: 64, k_nwarps: 4, atom_layout_msdp: 1, atom_layout_ndkv: 2, atom_layout_mdq: 1, is_v_in_regs: true, is_k_in_regs: true, no_double_buffer: false }
+        - { hdim_qk: 192, hdim_v: 192, block_m: 64, block_n: 64, k_nwarps: 8, atom_layout_msdp: 2, atom_layout_ndkv: 4, atom_layout_mdq: 2, is_v_in_regs: true, is_k_in_regs: true, no_double_buffer: false }
+        - { hdim_qk: 256, hdim_v: 256, block_m: 32, block_n: 32, k_nwarps: 4, atom_layout_msdp: 2, atom_layout_ndkv: 2, atom_layout_mdq: 2, is_v_in_regs: true, is_k_in_regs: true, no_double_buffer: false }
